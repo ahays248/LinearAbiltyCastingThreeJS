@@ -105,6 +105,21 @@ const GLACIER = WRAP(`
   <path d="M79 66L87 41L91 70"/>
 `);
 
+/**
+ * Holy — a spear tip under a rising pillar of light.
+ *
+ * The diagonal shaft matches the other line casts; the three vertical rays at
+ * the far end are the god-beams that open on impact. Small side barbs on the
+ * tip keep it reading as a lance, not a beam.
+ */
+const HOLY = WRAP(`
+  <path d="M18 78L72 28"/>
+  <path d="M72 28L62 30M72 28L70 38"/>
+  <path d="M48 48L42 42M56 40L52 34"/>
+  <path d="M78 18V42M86 22V46M70 22V40"/>
+  <path d="M78 18L74 14M78 18L82 14"/>
+`);
+
 /** Keyed by the ids in `ELEMENTS`. */
 export const ELEMENT_SIGILS = {
   ice: ICE,
@@ -112,5 +127,6 @@ export const ELEMENT_SIGILS = {
   meteor: METEOR,
   beam: BEAM,
   snare: SNARE,
-  glacier: GLACIER
+  glacier: GLACIER,
+  holy: HOLY
 };

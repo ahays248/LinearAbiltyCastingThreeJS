@@ -40,6 +40,7 @@ export class Editor {
     this._buildBeam();
     this._buildSnare();
     this._buildGlacier();
+    this._buildHoly();
     this._buildEnvironment();
     this._buildPost();
     this._buildCamera();
@@ -1559,6 +1560,156 @@ export class Editor {
     light.addColor(c, 'lightColor').name('light colour');
 
     this.glacierFolder = folder;
+  }
+
+  _buildHoly() {
+    const folder = this.gui.addFolder('✝  Holy Lance');
+    const c = settings.holy;
+    const R = Editor.range;
+
+    const cast = folder.addFolder('The cast');
+    R(cast, c, 'range', 2, 60, 0.1, 'max range');
+    R(cast, c, 'minRange', 0, 10, 0.1, 'min range');
+    R(cast, c, 'speed', 5, 300, 1, 'spear speed');
+    R(cast, c, 'lifetime', 0.05, 6, 0.01, 'hold lifetime');
+    R(cast, c, 'fadeTime', 0.05, 4, 0.01, 'collapse time');
+    R(cast, c, 'cooldown', 0, 6, 0.05, 'cooldown');
+    Editor.castAnimation(cast, c);
+
+    const anchor = folder.addFolder('Where it leaves the hand');
+    R(anchor, c, 'handHeight', 0, 3, 0.01, 'hand height');
+    R(anchor, c, 'handForward', -1, 3, 0.01, 'hand forward');
+    R(anchor, c, 'handSide', -1.5, 1.5, 0.01, 'hand lateral');
+    R(anchor, c, 'endHeight', 0, 4, 0.01, 'height at target');
+    R(anchor, c, 'sag', -2, 2, 0.01, 'mid-span bow');
+
+    const bundle = folder.addFolder('The spear');
+    R(bundle, c, 'strands', 1, 8, 1, 'filaments');
+    R(bundle, c, 'spread', 0, 2, 0.01, 'fan at target');
+    R(bundle, c, 'spreadNear', 0, 1, 0.01, 'fan at hand');
+    R(bundle, c, 'spreadCurve', 0.2, 5, 0.01, 'fan curve');
+    R(bundle, c, 'twist', -2, 2, 0.01, 'twist over length');
+    R(bundle, c, 'twistSpeed', -4, 4, 0.01, 'twist speed');
+    R(bundle, c, 'branchDim', 0, 1, 0.01, 'outer filament dim');
+
+    const shape = folder.addFolder('Smooth wave');
+    R(shape, c, 'wave', 0, 1.5, 0.005, 'wave amplitude');
+    R(shape, c, 'waveScale', 0.05, 4, 0.01, 'waves / metre');
+    R(shape, c, 'crawl', -10, 10, 0.05, 'wave crawl');
+    R(shape, c, 'pinch', 0.01, 0.5, 0.005, 'end pinch');
+    R(shape, c, 'converge', 0, 1, 0.01, 'lock onto target');
+
+    const ribbon = folder.addFolder('The ribbon');
+    R(ribbon, c, 'width', 0.005, 0.4, 0.005, 'width at hand');
+    R(ribbon, c, 'widthTip', 0.02, 2, 0.01, 'width at target');
+    R(ribbon, c, 'widthCurve', 0.1, 4, 0.01, 'taper curve');
+    R(ribbon, c, 'coreWidth', 1, 4, 0.01, 'spine thickness');
+    R(ribbon, c, 'coreSharp', 0.5, 12, 0.05, 'core sharpness');
+    R(ribbon, c, 'glowWidth', 1, 20, 0.1, 'halo width');
+    R(ribbon, c, 'glowFalloff', 0.2, 8, 0.05, 'halo falloff');
+    R(ribbon, c, 'glowOpacity', 0, 2, 0.01, 'halo opacity');
+    R(ribbon, c, 'softFade', 0.02, 3, 0.01, 'soft intersection');
+    R(ribbon, c, 'tipGlow', 0, 6, 0.05, 'leading-edge glow');
+    R(ribbon, c, 'tipLength', 0.005, 0.4, 0.005, 'leading-edge length');
+    R(ribbon, c, 'breath', 0, 1, 0.01, 'brightness breath');
+    R(ribbon, c, 'breathSpeed', 0.2, 12, 0.05, 'breath rate');
+
+    const material = folder.addFolder('Spear colour');
+    material.addColor(c, 'colorCore').name('core');
+    material.addColor(c, 'colorInner').name('inner');
+    material.addColor(c, 'colorOuter').name('outer');
+    material.addColor(c, 'colorHalo').name('halo');
+    R(material, c, 'glow', 0, 8, 0.01, 'glow');
+    R(material, c, 'opacity', 0, 2, 0.01, 'opacity');
+
+    const ground = folder.addFolder('Radiant brands');
+    R(ground, c, 'brandRate', 0.05, 8, 0.05, 'brands / metre');
+    R(ground, c, 'brandRadius', 0.1, 6, 0.05, 'brand radius');
+    R(ground, c, 'brandLife', 0.1, 12, 0.05, 'brand lifetime');
+    R(ground, c, 'brandIntensity', 0, 3, 0.01, 'brand intensity');
+    R(ground, c, 'shockRadius', 0.5, 25, 0.1, 'shockwave radius');
+    ground.addColor(c, 'colorBrandA').name('brand light');
+    ground.addColor(c, 'colorBrandB').name('brand warm');
+    ground.addColor(c, 'colorShockA').name('shockwave ring');
+    ground.addColor(c, 'colorShockB').name('shockwave crest');
+
+    const pillar = folder.addFolder('Impact pillar');
+    R(pillar, c, 'pillarHeight', 1, 24, 0.1, 'ray height');
+    R(pillar, c, 'pillarRays', 1, 16, 1, 'god-rays');
+    R(pillar, c, 'pillarSpread', 0, 4, 0.01, 'ray fan');
+    R(pillar, c, 'pillarSway', 0, 1.5, 0.01, 'sway');
+    R(pillar, c, 'pillarSwaySpeed', 0, 8, 0.05, 'sway speed');
+    R(pillar, c, 'pillarBranchDim', 0, 1, 0.01, 'outer ray dim');
+    R(pillar, c, 'pillarWidth', 0.01, 0.6, 0.005, 'ray width');
+    R(pillar, c, 'pillarWidthTop', 0.2, 4, 0.05, 'width at tip');
+    R(pillar, c, 'pillarWidthCurve', 0.1, 4, 0.01, 'width curve');
+    R(pillar, c, 'pillarCoreSharp', 0.5, 10, 0.05, 'core sharpness');
+    R(pillar, c, 'pillarGlowWidth', 1, 20, 0.1, 'halo width');
+    R(pillar, c, 'pillarGlowFalloff', 0.2, 8, 0.05, 'halo falloff');
+    R(pillar, c, 'pillarGlowOpacity', 0, 2, 0.01, 'halo opacity');
+    R(pillar, c, 'pillarGlow', 0, 8, 0.05, 'pillar glow');
+    R(pillar, c, 'pillarSnap', 0.02, 2, 0.01, 'rise time');
+
+    const particles = folder.addFolder('Sparks, motes & glitter');
+    R(particles, c, 'sparkRate', 0, 800, 1, 'spark rate');
+    R(particles, c, 'sparkSize', 0.005, 0.6, 0.005, 'spark size');
+    R(particles, c, 'sparkSpeed', 0, 30, 0.1, 'spark speed');
+    R(particles, c, 'sparkLifetime', 0.05, 4, 0.01, 'spark lifetime');
+    R(particles, c, 'sparkGravity', -30, 10, 0.1, 'spark gravity');
+    R(particles, c, 'sparkStretch', 0, 2, 0.01, 'spark stretch');
+    R(particles, c, 'moteRate', 0, 500, 1, 'mote rate');
+    R(particles, c, 'moteSize', 0.005, 0.4, 0.005, 'mote size');
+    R(particles, c, 'moteSpeed', 0, 10, 0.05, 'mote speed');
+    R(particles, c, 'moteLifetime', 0.1, 6, 0.05, 'mote lifetime');
+    R(particles, c, 'moteRise', -2, 8, 0.05, 'mote rise');
+    R(particles, c, 'moteTurbulence', 0, 3, 0.01, 'mote turbulence');
+    R(particles, c, 'glitterRate', 0, 600, 1, 'glitter rate');
+    R(particles, c, 'glitterSize', 0.005, 0.3, 0.005, 'glitter size');
+    R(particles, c, 'glitterSpeed', 0, 12, 0.05, 'glitter speed');
+    R(particles, c, 'glitterLifetime', 0.1, 5, 0.05, 'glitter lifetime');
+    R(particles, c, 'glitterRise', -2, 10, 0.05, 'glitter rise');
+    Editor.gradient(particles, c, 'colorSpark', 'Spark colour');
+    Editor.gradient(particles, c, 'colorMote', 'Mote colour');
+    Editor.gradient(particles, c, 'colorGlitter', 'Glitter colour');
+
+    const haze = folder.addFolder('Haze');
+    R(haze, c, 'hazeRate', 0, 300, 1, 'haze rate');
+    R(haze, c, 'hazeSize', 0.1, 4, 0.05, 'haze size');
+    R(haze, c, 'hazeSpeed', 0, 6, 0.05, 'haze speed');
+    R(haze, c, 'hazeLifetime', 0.2, 8, 0.05, 'haze lifetime');
+    R(haze, c, 'hazeOpacity', 0, 0.5, 0.005, 'haze opacity');
+    R(haze, c, 'hazeRise', -1, 4, 0.05, 'haze rise');
+    Editor.gradient(haze, c, 'colorHaze', 'Haze colour');
+
+    const impact = folder.addFolder('Impact');
+    R(impact, c, 'muzzleSize', 0.05, 4, 0.05, 'muzzle size');
+    R(impact, c, 'muzzleIntensity', 0, 4, 0.05, 'muzzle intensity');
+    R(impact, c, 'castFlash', 0, 1, 0.01, 'cast flash');
+    R(impact, c, 'burstSize', 0.2, 12, 0.1, 'burst size');
+    R(impact, c, 'burstIntensity', 0, 4, 0.05, 'burst intensity');
+    R(impact, c, 'burstSparks', 0, 300, 1, 'burst sparks');
+    R(impact, c, 'burstMotes', 0, 300, 1, 'burst motes');
+    R(impact, c, 'burstGlitter', 0, 400, 1, 'burst glitter');
+    R(impact, c, 'impactShake', 0, 3, 0.05, 'impact shake');
+    R(impact, c, 'shakeDuration', 0.05, 3, 0.05, 'shake duration');
+    R(impact, c, 'holdShake', 0, 0.5, 0.005, 'hold rumble');
+    R(impact, c, 'impactFlash', 0, 1, 0.01, 'impact flash');
+    R(impact, c, 'rumble', 0, 0.3, 0.005, 'travel rumble');
+    impact.addColor(c, 'colorCastFlash').name('cast flash');
+    impact.addColor(c, 'colorMuzzleA').name('muzzle A');
+    impact.addColor(c, 'colorMuzzleB').name('muzzle B');
+    impact.addColor(c, 'colorMuzzleC').name('muzzle C');
+    impact.addColor(c, 'colorBurstA').name('burst A');
+    impact.addColor(c, 'colorBurstB').name('burst B');
+    impact.addColor(c, 'colorBurstC').name('burst C');
+    impact.addColor(c, 'colorFlash').name('impact flash');
+
+    const light = folder.addFolder('Dynamic light');
+    R(light, c, 'lightIntensity', 0, 80, 0.5, 'light intensity');
+    R(light, c, 'lightRadius', 0.5, 40, 0.1, 'light radius');
+    light.addColor(c, 'lightColor').name('light colour');
+
+    this.holyFolder = folder;
   }
 
   /* ------------------------------------------------------------------ */

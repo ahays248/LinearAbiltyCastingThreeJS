@@ -1711,6 +1711,172 @@ export const settings = {
   },
 
   /* ------------------------------------------------------------------ */
+  /* Holy Lance — a clean gold-white spear that plants a pillar of light */
+  /* ------------------------------------------------------------------ */
+  /**
+   * Line cast. A smooth spear leaves the hand, brands the floor pale as it
+   * goes, and on impact opens a vertical cluster of god-rays. Not a sustained
+   * horizontal beam (see Nova Beam) and not a kinked discharge (see Storm
+   * Lance): a weapon that arrives, then answers with a vertical pillar.
+   *
+   * A cast captures one seed. Every metre is resolved from these values each
+   * frame, including while paused.
+   */
+  holy: {
+    /* --- the cast --- */
+    range: 22.0,
+    minRange: 2.0,
+    speed: 78.0, // spear tip travel, metres/second
+    lifetime: 1.1, // seconds the spear + pillar hold after impact
+    fadeTime: 0.55, // seconds they collapse
+    cooldown: 0.7,
+    castAnim: 'cast1',
+
+    /* --- where the spear leaves the caster --- */
+    handHeight: 1.3,
+    handForward: 0.52,
+    handSide: 0.12,
+    endHeight: 0.4,
+    sag: 0.08, // slight lift mid-span
+
+    /* --- the spear bundle --- */
+    strands: 3, // thin side filaments around the spine (capped at 8)
+    spread: 0.14, // metres the bundle fans at the far end
+    spreadNear: 0.02,
+    spreadCurve: 1.5,
+    twist: 0.12,
+    twistSpeed: 0.25,
+    branchDim: 0.5,
+
+    /* --- smooth shape of one filament --- */
+    wave: 0.05, // metres of soft undulation (not lightning kinks)
+    waveScale: 0.32, // waves per metre
+    crawl: 0.7,
+    pinch: 0.1,
+    converge: 1.0,
+
+    /* --- the ribbon --- */
+    width: 0.038,
+    widthTip: 0.32,
+    widthCurve: 1.15,
+    coreWidth: 1.45,
+    coreSharp: 3.9,
+    glowWidth: 6.2,
+    glowFalloff: 2.1,
+    glowOpacity: 0.4,
+    softFade: 0.55,
+    tipGlow: 1.9,
+    tipLength: 0.09,
+    breath: 0.12, // soft brightness pulse (not a stutter)
+    breathSpeed: 3.0,
+
+    /* --- colour --- */
+    colorCore: '#fff8e8',
+    colorInner: '#ffe08a',
+    colorOuter: '#ffb84a',
+    colorHalo: '#d9891a',
+    glow: 2.5,
+    opacity: 1.0,
+
+    /* --- pale brands on the ground --- */
+    brandRate: 1.1, // brands per metre of tip travel
+    brandRadius: 0.85,
+    brandLife: 2.8,
+    brandIntensity: 0.85,
+    colorBrandA: '#fff0c4',
+    colorBrandB: '#ffc86a',
+    shockRadius: 5.5,
+    colorShockA: '#ffe7a0',
+    colorShockB: '#ffffff',
+
+    /* --- impact pillar (god-rays) --- */
+    pillarHeight: 7.5, // metres the rays climb
+    pillarRays: 8, // vertical beams (capped at 16)
+    pillarSpread: 0.55, // how far rays fan from the centre, metres
+    pillarSway: 0.16,
+    pillarSwaySpeed: 1.3,
+    pillarBranchDim: 0.65,
+    pillarWidth: 0.07,
+    pillarWidthTop: 1.7,
+    pillarWidthCurve: 0.85,
+    pillarCoreSharp: 2.7,
+    pillarGlowWidth: 5.2,
+    pillarGlowFalloff: 1.7,
+    pillarGlowOpacity: 0.34,
+    pillarGlow: 2.3,
+    pillarSnap: 0.28, // seconds the pillar takes to rise open
+
+    /* --- sparks, motes, glitter, haze --- */
+    sparkRate: 140,
+    sparkSize: 0.12,
+    sparkSpeed: 5.5,
+    sparkLifetime: 0.55,
+    sparkGravity: -4.0,
+    sparkStretch: 0.12,
+    colorSparkA: '#ffffff',
+    colorSparkB: '#fff2c8',
+    colorSparkC: '#ffc96a',
+    colorSparkD: '#8a4a12',
+    moteRate: 70,
+    moteSize: 0.045,
+    moteSpeed: 1.2,
+    moteLifetime: 1.5,
+    moteRise: 1.4,
+    moteTurbulence: 0.45,
+    colorMoteA: '#ffffff',
+    colorMoteB: '#ffe9a8',
+    colorMoteC: '#ffb84a',
+    colorMoteD: '#6a3a10',
+    glitterRate: 90, // only while the pillar stands
+    glitterSize: 0.04,
+    glitterSpeed: 2.2,
+    glitterLifetime: 1.1,
+    glitterRise: 2.4,
+    colorGlitterA: '#ffffff',
+    colorGlitterB: '#fff6d0',
+    colorGlitterC: '#ffd27a',
+    colorGlitterD: '#a06018',
+    hazeRate: 28,
+    hazeSize: 0.9,
+    hazeSpeed: 0.7,
+    hazeLifetime: 2.0,
+    hazeOpacity: 0.07,
+    hazeRise: 0.45,
+    colorHazeA: '#6a5a40',
+    colorHazeB: '#4a4030',
+    colorHazeC: '#2e2820',
+    colorHazeD: '#181410',
+
+    /* --- throw / impact feedback --- */
+    muzzleSize: 0.5,
+    muzzleIntensity: 1.4,
+    castFlash: 0.1,
+    colorCastFlash: '#fff2c4',
+    colorMuzzleA: '#fff8e0',
+    colorMuzzleB: '#ffd27a',
+    colorMuzzleC: '#ff9a2e',
+    burstSize: 3.2,
+    burstIntensity: 1.15,
+    burstSparks: 70,
+    burstMotes: 55,
+    burstGlitter: 110,
+    impactShake: 0.55,
+    shakeDuration: 0.55,
+    holdShake: 0.03,
+    impactFlash: 0.22,
+    rumble: 0.03,
+    colorBurstA: '#fff0c0',
+    colorBurstB: '#ffd070',
+    colorBurstC: '#ffffff',
+    colorFlash: '#fff6d8',
+
+    /* --- dynamic light --- */
+    lightIntensity: 15,
+    lightRadius: 13,
+    lightColor: '#ffd27a'
+  },
+
+  /* ------------------------------------------------------------------ */
   /* Camera rig                                                          */
   /* ------------------------------------------------------------------ */
   camera: {
@@ -1827,7 +1993,7 @@ export const CastShape = Object.freeze({
  * array, and the index is the slot the keyboard binds to — adding a third
  * ability is a new file, an entry here and a settings block above.
  */
-export const ELEMENTS = ['ice', 'thunder', 'meteor', 'beam', 'snare', 'glacier'];
+export const ELEMENTS = ['ice', 'thunder', 'meteor', 'beam', 'snare', 'glacier', 'holy'];
 
 /**
  * Registry metadata: how an ability is presented, and how it is aimed.
@@ -1853,7 +2019,8 @@ export const ELEMENT_META = {
     key: 'X',
     hint: 'Glacial Crown',
     cast: CastShape.ZONE
-  }
+  },
+  holy: { label: 'Holy Lance', accent: '#ffd27a', key: 'T', hint: 'Holy Lance' }
 };
 
 /** How the given ability is aimed. Line unless its metadata says otherwise. */
