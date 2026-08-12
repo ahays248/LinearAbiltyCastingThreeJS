@@ -213,9 +213,13 @@ export class App {
     this.cooldowns.set(element, Math.max(0, settings[element].cooldown));
 
     // Snap onto the shot and throw the body into it. Which clip that is belongs
-    // to the ability, so each spell can be cast with its own gesture.
+    // to the ability, so each spell can be cast with its own gesture. Long
+    // summons (Holy Lance) stretch the clip to `charge` so the body reaches up
+    // for the whole hold, not just the first half-second of the FBX.
     this.character.setFacing(this.aim.facing);
-    this.character.playCast(settings[element].castAnim);
+    const castCfg = settings[element] ?? {};
+    const fitDuration = castCfg.castFitCharge ? castCfg.charge : undefined;
+    this.character.playCast(castCfg.castAnim, { fitDuration });
     this.character.castLunge();
   }
 

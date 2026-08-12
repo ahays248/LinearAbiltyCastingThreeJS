@@ -1570,13 +1570,21 @@ export class Editor {
     const cast = folder.addFolder('The cast');
     R(cast, c, 'range', 2, 60, 0.1, 'max range');
     R(cast, c, 'minRange', 0, 10, 0.1, 'min range');
-    R(cast, c, 'charge', 0, 1.5, 0.01, 'release delay (hands)');
+    R(cast, c, 'charge', 0.2, 4, 0.01, 'summon length (sec)');
+    cast.add(c, 'castFitCharge').name('stretch cast to summon');
     R(cast, c, 'chargeShake', 0, 0.3, 0.005, 'wind-up rumble');
     R(cast, c, 'speed', 5, 300, 1, 'spear speed');
     R(cast, c, 'lifetime', 0.05, 6, 0.01, 'hold lifetime');
     R(cast, c, 'fadeTime', 0.05, 4, 0.01, 'collapse time');
     R(cast, c, 'cooldown', 0, 6, 0.05, 'cooldown');
     Editor.castAnimation(cast, c);
+
+    const summon = folder.addFolder('Sky reach summon');
+    R(summon, c, 'summonGrow', 0.05, 0.5, 0.01, 'grow phase (frac)');
+    R(summon, c, 'summonHold', 0.3, 0.95, 0.01, 'hold ends (frac)');
+    R(summon, c, 'summonHeight', 1.5, 8, 0.05, 'tip height in sky');
+    R(summon, c, 'summonForward', -1, 2, 0.01, 'sky forward');
+    R(summon, c, 'summonSide', -1.5, 1.5, 0.01, 'sky lateral');
 
     const anchor = folder.addFolder('Where it leaves the hand');
     R(anchor, c, 'handHeight', 0, 3, 0.01, 'hand height');

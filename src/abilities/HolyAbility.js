@@ -36,12 +36,12 @@ const _heading = new Vector3();
  *
  * Beat map:
  *
- *   1. **summon** — a *physical* gold spear forms in the hands (not a beam).
- *   2. **throw** — the whole weapon flies along the aim line; only a short
- *      particle trail follows. No continuous energy ribbon.
- *   3. **impact** — a monument-sized lightning bolt crashes from the sky while
- *      soft god-rays open around the landing.
- *   4. **fade** — spear, skybolt and pillar collapse.
+ *   1. **sky reach** — long hold: spear forms high above the caster (tip up)
+ *      while the body reaches up; held long enough to read as a weapon.
+ *   2. **grip** — spear lowers into the hands and tips onto the aim line.
+ *   3. **throw** — whole weapon flies; short particle wake only (no beam).
+ *   4. **impact** — sky judgment bolt + god-rays.
+ *   5. **fade** — spear, skybolt and pillar collapse.
  *
  * Distinct from Nova Beam (sustained horizontal column of light). This is a
  * thrown object, then a vertical answer.
@@ -606,15 +606,14 @@ export class HolyAbility extends Ability {
     this._syncUniforms(1);
 
     if (charging) {
-      // Summon: spear grows in the hands while the cast clip winds up.
-      const grow = Easing.outCubic(this.releaseCharge);
-      this._handPoint(_pos);
-      // Tip slightly past the hand along the aim so it reads as "held forward".
-      _pos.addScaledVector(this.direction, c.spearLength * grow * 0.35);
-      this._placeSpear(_pos, this.direction, grow, 1);
-      this.position.copy(this.spearRoot.position).addScaledVector(this.direction, c.spearLength * grow * 0.5);
-      this._chargeFx(dt, grow);
-      this.ctx.shake.rumble(c.chargeShake * this.releaseCharge * settings.global.cameraShake, dt);
+      // Sky-reach summon: form high above, hold so the weapon is readable, then
+      // lower into the hands before the throw.
+      const chargeT = this.releaseCharge;
+      const grow = this._summonPose(chargeT, _pos, _heading);
+      this._placeSpear(_pos, _heading, grow, 1);
+      this.position.copy(this.spearRoot.position).addScaledVector(_heading, c.spearLength * grow * 0.5);
+      this._chargeFx(dt, grow, chargeT);
+      this.ctx.shake.rumble(c.chargeShake * chargeT * settings.global.cameraShake, dt);
       return;
     }
 
@@ -634,6 +633,61 @@ export class HolyAbility extends Ability {
     this.ctx.shake.rumble(c.rumble * settings.global.cameraShake, dt);
   }
 
+  /**
+   * Sky-reach summon pose.
+   *
+   * @param {number} chargeT 0..1 through `charge`
+   * @param {Vector3} outTip
+   * @param {Vector3} outHeading
+   * @returns {number} grow scale 0..1
+   */
+  _summonPose(chargeT, outTip, outHeading) {
+    const c = settings.holy;
+    const t = saturate(chargeT);
+    const growEnd = Math.max(0.05, Math.min(0.9, c.summonGrow));
+    const holdEnd = Math.max(growEnd + 0.05, Math.min(0.98, c.summonHold));
+
+    // Grow quickly at the start, then sit at full size for the long hold.
+    const grow = t < growEnd ? Easing.outCubic(t / growEnd) : 1;
+
+    // Overhead: tip high, shaft mostly vertical (player reaches up to it).
+    this._skySummonTip(_skyOrigin);
+    // Slight idle sway so a long hold does not look frozen.
+    const sway = Math.sin(this.age * 2.1) * 0.06;
+    _skyOrigin.x += this.side.x * sway;
+    _skyOrigin.z += this.side.z * sway;
+
+    // Throw grip: tip just past the hands along the aim.
+    this._handPoint(_target);
+    _target.addScaledVector(this.direction, c.spearLength * 0.4);
+
+    // Last beat: pull from sky into the hands and tip onto the aim line.
+    let blend = 0;
+    if (t > holdEnd) {
+      blend = Easing.inOutCubic(saturate((t - holdEnd) / Math.max(0.02, 1 - holdEnd)));
+    }
+
+    outTip.lerpVectors(_skyOrigin, _target, blend);
+
+    // Vertical while held; rotate forward onto the aim as it drops into the hands.
+    _dir.set(0, 1, 0).addScaledVector(this.direction, 0.12).normalize();
+    outHeading.lerpVectors(_dir, this.direction, blend);
+    if (outHeading.lengthSq() < 1e-8) outHeading.set(0, 1, 0);
+    else outHeading.normalize();
+
+    return grow;
+  }
+
+  /** Tip position while the spear is held above the caster. */
+  _skySummonTip(out) {
+    const c = settings.holy;
+    out.copy(this.origin);
+    out.addScaledVector(this.direction, c.summonForward);
+    out.addScaledVector(this.side, c.summonSide);
+    out.y = c.summonHeight;
+    return out;
+  }
+
   /** Unit direction of flight at fraction `s` (flat aim + slight sag). */
   _headingAt(s, out) {
     const eps = 0.02;
@@ -644,32 +698,62 @@ export class HolyAbility extends Ability {
     return out.normalize();
   }
 
-  /** Motes drawn into the forming spear — summon, not a charge orb. */
-  _chargeFx(dt, grow) {
+  /**
+   * Motes drawn toward the forming spear — denser while it hangs in the sky so
+   * the long hold still feels alive.
+   */
+  _chargeFx(dt, grow, chargeT) {
     const c = settings.holy;
     const g = settings.global;
     if (grow < 0.08) return;
 
-    this._handPoint(_pos);
-    const moteCount = Math.round(this.moteEmitter.tick(dt, c.moteRate * 1.2 * grow) * g.particleCount);
+    // Emit around the spear (overhead for most of the summon).
+    _pos.copy(this.spearRoot.position);
+    _pos.y += c.spearLength * grow * 0.5;
+
+    const holdBoost = chargeT > c.summonGrow && chargeT < c.summonHold ? 1.35 : 1;
+    const moteCount = Math.round(
+      this.moteEmitter.tick(dt, c.moteRate * 1.4 * grow * holdBoost) * g.particleCount
+    );
     if (moteCount > 0) {
-      // Emit around the hand, pull toward the spear (negative spread read via direction).
       _emit.position = _pos;
-      _emit.radius = 0.55 * (1.1 - 0.5 * grow);
-      _emit.direction = _dir.copy(this.direction).multiplyScalar(0.2).setY(0.35).normalize();
-      _emit.speed = c.moteSpeed * 0.9;
+      _emit.radius = 0.7 * (1.15 - 0.4 * grow);
+      _emit.direction = _dir.set(0, -0.35, 0).addScaledVector(this.direction, 0.15).normalize();
+      _emit.speed = c.moteSpeed * 0.85;
       _emit.speedVariance = 0.55;
-      _emit.spread = 0.95;
+      _emit.spread = 1.0;
       _emit.inherit = null;
       _emit.anchor = null;
-      _emit.size = 0.07;
+      _emit.size = 0.075;
       _emit.sizeVariance = 0.5;
-      _emit.life = c.moteLifetime * 0.65;
-      _emit.lifeVariance = 0.35;
+      _emit.life = c.moteLifetime * 0.75;
+      _emit.lifeVariance = 0.4;
       _emit.spin = 0;
       _emit.tint = null;
       _emit.time = frame.uTime.value;
       this.motes.emit(moteCount, _emit);
+    }
+
+    // Soft glitter while the full spear is on display.
+    if (grow > 0.85) {
+      const glitterCount = Math.round(
+        this.glitterEmitter.tick(dt, c.glitterRate * 0.35 * holdBoost) * g.particleCount
+      );
+      if (glitterCount > 0) {
+        _emit.position = _pos;
+        _emit.radius = 0.35;
+        _emit.direction = _dir.set(0, 1, 0);
+        _emit.speed = c.glitterSpeed * 0.5;
+        _emit.speedVariance = 0.5;
+        _emit.spread = 0.9;
+        _emit.size = 0.05;
+        _emit.sizeVariance = 0.45;
+        _emit.life = c.glitterLifetime * 0.6;
+        _emit.lifeVariance = 0.35;
+        _emit.spin = 0;
+        _emit.time = frame.uTime.value;
+        this.glitter.emit(glitterCount, _emit);
+      }
     }
   }
 

@@ -268,8 +268,12 @@ export class CharacterController {
    *
    * @param {string} [name] an id from `CAST_ANIMATIONS`; falls back to the first
    *   one so an ability configured with a clip that failed to load still moves.
+   * @param {object} [options]
+   * @param {number} [options.fitDuration]  stretch the clip so it lasts this
+   *   many seconds (used by long summons so the body does not finish before
+   *   the VFX is ready to release)
    */
-  playCast(name) {
+  playCast(name, options = {}) {
     const next = this.casts.get(name) ?? this.casts.get(CAST_ANIMATIONS[0]);
     if (!next || !this.idle) return;
 
@@ -277,7 +281,11 @@ export class CharacterController {
     this._cast = next;
 
     next.reset();
-    next.setEffectiveTimeScale(1);
+    const clipDuration = Math.max(0.05, next.getClip()?.duration ?? 1);
+    const fit = options.fitDuration;
+    const timeScale =
+      fit != null && fit > 0 ? clipDuration / Math.max(0.05, fit) : 1;
+    next.setEffectiveTimeScale(timeScale);
     next.play();
 
     // Fade from whatever is actually on screen — the idle on a first cast, the

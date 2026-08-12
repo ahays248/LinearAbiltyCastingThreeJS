@@ -1728,24 +1728,34 @@ export const settings = {
     range: 22.0,
     minRange: 2.0,
     /**
-     * Seconds the body winds up before the spear leaves the hands. Matched to
-     * the cast clip so the VFX does not fire on click ahead of the gesture
-     * (same idea as Nova Beam's `charge`).
+     * Long sky-reach summon. The cast clip is stretched to this length
+     * (`castFitCharge`) so the body stays reaching up while the spear forms
+     * overhead and is held long enough to read as a weapon before the throw.
      */
-    charge: 0.28,
-    chargeShake: 0.02,
+    charge: 1.55,
+    castFitCharge: true, // stretch castAnim duration to match `charge`
+    chargeShake: 0.035,
+    /**
+     * Summon timeline as fractions of `charge` (0..1):
+     *   0 → summonGrow     spear materialises high above (grow 0→1)
+     *   summonGrow → summonHold   full spear held in the sky (the readable beat)
+     *   summonHold → 1     lowers into the hands and tips onto the aim line
+     */
+    summonGrow: 0.22,
+    summonHold: 0.72,
+    summonHeight: 3.35, // tip height while held in the sky, metres
+    summonForward: 0.15, // slight lean toward aim while overhead
+    summonSide: 0.0,
     speed: 95.0, // spear tip travel once released, metres/second
     lifetime: 1.8, // seconds spear + skybolt + pillar hold after impact
     fadeTime: 0.75, // seconds they collapse
-    cooldown: 1.1,
-    castAnim: 'cast2', // throw-forward clip; cast1 is the two-hand beam pose
+    cooldown: 1.8, // room for the long summon before re-cast
+    castAnim: 'cast1', // two-hand raise — reads as reaching up for the spear
 
-    /* --- where the spear leaves the caster --- */
-    // Tuned for cast2 at release: hand extended on the aim line, slightly off
-    // centre like a javelin rather than a two-hand beam orb.
-    handHeight: 1.38,
-    handForward: 0.78,
-    handSide: 0.14,
+    /* --- where the spear leaves the caster (throw grip at end of summon) --- */
+    handHeight: 1.42,
+    handForward: 0.72,
+    handSide: 0.1,
     endHeight: 0.55,
     sag: 0.04, // almost straight — a thrown spear, not a sagging beam
 
