@@ -1749,48 +1749,24 @@ export const settings = {
     endHeight: 0.55,
     sag: 0.04, // almost straight — a thrown spear, not a sagging beam
 
-    /* --- the spear (weapon, not a multi-filament beam) --- */
-    strands: 1, // one shaft; side filaments read as a beam
-    spread: 0.0,
-    spreadNear: 0.0,
-    spreadCurve: 1.0,
-    twist: 0.0,
-    twistSpeed: 0.0,
-    branchDim: 1.0,
-
-    /* --- smooth shape — kept tiny so it stays a rigid weapon --- */
-    wave: 0.012,
-    waveScale: 0.18,
-    crawl: 0.25,
-    pinch: 0.05,
-    converge: 1.0,
-
-    /* --- weapon silhouette (shaft + leaf head + point) --- */
-    width: 0.055, // half-width of the shaft at the grip, metres
-    widthTip: 0.82, // mid-shaft taper factor (head is separate)
-    widthCurve: 0.55, // gentle shaft taper before the head
-    headStart: 0.70, // fraction of length where the spearhead begins
-    headWidth: 2.55, // peak head half-width, × `width`
-    headPeak: 0.42, // where the leaf is fattest inside the head (0..1 of head)
-    tipPoint: 0.045, // last fraction pinches to a hard point
-    coreWidth: 1.1,
-    coreSharp: 4.8, // hard shaft edge — soft edges read as a beam
-    glowWidth: 2.6, // tight rim only (was 6+ like a beam halo)
-    glowFalloff: 2.8,
-    glowOpacity: 0.26,
-    softFade: 0.4,
-    tipGlow: 1.6,
-    tipLength: 0.06,
+    /* --- solid summoned spear (mesh projectile, not a beam ribbon) --- */
+    spearLength: 2.15, // metres tip-to-butt
+    spearEmissive: 1.55, // body glow
+    spearAura: 0.85, // soft shell around the metal
+    spearMetalness: 0.72,
+    spearRoughness: 0.28,
+    colorSpearBody: '#f0c86a',
+    colorSpearGlow: '#ffe6a0',
+    trailRate: 90, // particles only in the wake of the weapon
     breath: 0.08,
     breathSpeed: 2.4,
-
-    /* --- colour --- */
+    softFade: 0.55, // still used by skybolt / god-ray soft intersections
+    opacity: 1.0,
+    // God-ray / shared warm palette (impact pillar, not the thrown mesh)
     colorCore: '#fff8e8',
     colorInner: '#ffe08a',
     colorOuter: '#ffb84a',
     colorHalo: '#d9891a',
-    glow: 2.5,
-    opacity: 1.0,
 
     /* --- pale brands on the ground --- */
     brandRate: 1.1, // brands per metre of tip travel

@@ -5,6 +5,11 @@ import {
   IcosahedronGeometry,
   InstancedBufferGeometry,
   InstancedBufferAttribute,
+  CylinderGeometry,
+  ConeGeometry,
+  SphereGeometry,
+  Group,
+  Mesh,
   Sphere,
   Vector3
 } from 'three';
@@ -339,6 +344,50 @@ export function createAsteroidGeometry({
   geometry.computeVertexNormals();
   geometry.computeBoundingSphere();
   return geometry;
+}
+
+/**
+ * A thrown spear — solid weapon, not a ribbon.
+ *
+ * Unit height 1 along **local +Y**: butt at y = 0, tip at y = 1. The ability
+ * scales the root by length in metres and aims +Y along the flight heading, so
+ * the tip leads and the shaft trails. Parts share one material; proportions are
+ * fixed here and read as a lance at any length.
+ *
+ * @param {import('three').Material} material
+ * @returns {Group}
+ */
+export function createSpearMesh(material) {
+  const root = new Group();
+  root.name = 'Spear';
+
+  // Slightly tapered shaft — thicker at the grip, thinner under the head.
+  const shaft = new Mesh(new CylinderGeometry(0.028, 0.042, 0.68, 12, 1, false), material);
+  shaft.position.y = 0.34;
+  shaft.castShadow = true;
+  shaft.receiveShadow = true;
+
+  // Small cross-guard so it reads as a weapon, not a stick.
+  const guard = new Mesh(new CylinderGeometry(0.09, 0.09, 0.028, 8, 1, false), material);
+  guard.position.y = 0.69;
+  guard.castShadow = true;
+
+  // Leaf head: long cone with a second flatter cone for the wings.
+  const head = new Mesh(new ConeGeometry(0.085, 0.26, 8, 1, false), material);
+  head.position.y = 0.68 + 0.13;
+  head.castShadow = true;
+
+  const wings = new Mesh(new ConeGeometry(0.12, 0.14, 8, 1, false), material);
+  wings.position.y = 0.72;
+  wings.castShadow = true;
+
+  // Pommel mass at the butt.
+  const pommel = new Mesh(new SphereGeometry(0.048, 10, 8), material);
+  pommel.position.y = 0.02;
+  pommel.castShadow = true;
+
+  root.add(shaft, guard, head, wings, pommel);
+  return root;
 }
 
 /**

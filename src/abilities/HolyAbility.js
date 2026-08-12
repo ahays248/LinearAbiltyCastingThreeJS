@@ -1,12 +1,11 @@
-import { Mesh, Vector3 } from 'three';
+import { Mesh, Vector3, Group } from 'three';
 import { Ability, AbilityPhase } from './Ability.js';
+import { createHolyRayMaterial, createHolySkyboltMaterial } from '../materials/HolyMaterial.js';
 import {
-  createHolyMaterial,
-  createHolyRayMaterial,
-  createHolySkyboltMaterial,
-  HolyPass
-} from '../materials/HolyMaterial.js';
-import { createBoltRibbonGeometry } from '../assets/ProceduralGeometry.js';
+  createHolySpearMaterial,
+  createHolySpearAuraMaterial
+} from '../materials/HolySpearMaterial.js';
+import { createBoltRibbonGeometry, createSpearMesh } from '../assets/ProceduralGeometry.js';
 import { ParticleShape } from '../particles/ParticleSystem.js';
 import { RateEmitter } from '../particles/ParticleEngine.js';
 import { DecalType } from '../effects/GroundDecals.js';
@@ -17,39 +16,35 @@ import { settings } from '../config/settings.js';
 import { getColor } from '../utils/color.js';
 import { saturate, lerp, Easing, randRange } from '../utils/math.js';
 
-/** Hard ceiling on spear filaments. The editor clamps `strands` here. */
-const MAX_STRANDS = 8;
-/** Samples along one filament. */
-const NODES = 64;
 /** Ceiling on god-rays at the impact pillar. */
 const MAX_RAYS = 16;
 /** Ceiling on skybolt filaments — big judgment strike. */
 const MAX_SKY_STRANDS = 24;
 const SKY_NODES = 80;
 const SPARK_BATCHES = 5;
+const _Y_UP = new Vector3(0, 1, 0);
 
 const _emit = {};
 const _pos = new Vector3();
 const _dir = new Vector3();
 const _target = new Vector3();
 const _skyOrigin = new Vector3();
+const _heading = new Vector3();
 
 /**
- * HOLY LANCE — a clean gold-white skillshot that calls a sky judgment.
+ * HOLY LANCE — summon a solid spear, throw it, call sky judgment.
  *
  * Beat map:
  *
- *   1. **travel** — a smooth spear leaves the hand and races along the aim
- *      line. Soft motes trail it; pale brands kiss the floor under the tip.
- *   2. **impact** — a *large* kinked lightning bolt crashes from the sky onto
- *      the hit point (Glacial Crown scale), while soft god-rays open around
- *      the landing. Shock rings, electric brands and glitter tear open on the
- *      floor.
- *   3. **fade** — spear, skybolt and pillar collapse into a thread of light.
+ *   1. **summon** — a *physical* gold spear forms in the hands (not a beam).
+ *   2. **throw** — the whole weapon flies along the aim line; only a short
+ *      particle trail follows. No continuous energy ribbon.
+ *   3. **impact** — a monument-sized lightning bolt crashes from the sky while
+ *      soft god-rays open around the landing.
+ *   4. **fade** — spear, skybolt and pillar collapse.
  *
- * Distinct from Nova Beam (sustained horizontal column) and Storm Lance
- * (horizontal hand bolt). The skybolt is Storm Lance's ribbon language stood
- * vertical and scaled for a monument-sized answer.
+ * Distinct from Nova Beam (sustained horizontal column of light). This is a
+ * thrown object, then a vertical answer.
  *
  * **Editor rule.** A cast captures one seed. Every metre is resolved against
  * `settings.holy` each frame — including zero-length frames while paused.
@@ -64,13 +59,23 @@ export class HolyAbility extends Ability {
   /* ------------------------------------------------------------------ */
 
   createShaders() {
-    this.spearGeometry = createBoltRibbonGeometry(NODES, MAX_STRANDS);
-    this.rayGeometry = createBoltRibbonGeometry(NODES, MAX_RAYS);
+    this.rayGeometry = createBoltRibbonGeometry(64, MAX_RAYS);
     this.skyGeometry = createBoltRibbonGeometry(SKY_NODES, MAX_SKY_STRANDS);
 
-    this.spearCore = createHolyMaterial(HolyPass.SPEAR_CORE);
-    this.spearGlow = createHolyMaterial(HolyPass.SPEAR_GLOW);
-    this.spearMaterials = [this.spearGlow, this.spearCore];
+    // Solid weapon (object), not a ribbon beam.
+    this.spearMaterial = createHolySpearMaterial(this.ctx.environment);
+    this.spearAuraMaterial = createHolySpearAuraMaterial();
+    this.spear = createSpearMesh(this.spearMaterial);
+    this.spearAura = createSpearMesh(this.spearAuraMaterial);
+    this.spearAura.scale.setScalar(1.12);
+    this.spearRoot = new Group();
+    this.spearRoot.name = 'HolySpearRoot';
+    this.spearRoot.add(this.spearAura, this.spear);
+    this.spearRoot.visible = false;
+    this.spearRoot.layers.set(LAYER.VFX);
+    this.spear.traverse((o) => o.layers?.set(LAYER.VFX));
+    this.spearAura.traverse((o) => o.layers?.set(LAYER.VFX));
+    this.group.add(this.spearRoot);
 
     this.rayGlow = createHolyRayMaterial(true);
     this.rayCore = createHolyRayMaterial(false);
@@ -79,17 +84,6 @@ export class HolyAbility extends Ability {
     this.skyGlow = createHolySkyboltMaterial(true);
     this.skyCore = createHolySkyboltMaterial(false);
     this.skyMaterials = [this.skyGlow, this.skyCore];
-
-    this.spearMeshes = [];
-    for (const [index, material] of this.spearMaterials.entries()) {
-      const mesh = new Mesh(this.spearGeometry, material);
-      mesh.frustumCulled = false;
-      mesh.matrixAutoUpdate = false;
-      mesh.layers.set(LAYER.VFX);
-      mesh.renderOrder = 12 + index;
-      this.group.add(mesh);
-      this.spearMeshes.push(mesh);
-    }
 
     this.rayMeshes = [];
     for (const [index, material] of this.rayMaterials.entries()) {
@@ -116,12 +110,13 @@ export class HolyAbility extends Ability {
     }
 
     this._seed = 0;
-    this._strandCount = 1;
     this._rayCount = 1;
     this._skyCount = 1;
     this._brandDistance = 0;
     this._pillarReveal = 0;
     this._skyProgress = 0;
+    this._spearScale = 0;
+    this._spearFade = 1;
 
     this._state = {
       origin: new Vector3(),
@@ -206,11 +201,7 @@ export class HolyAbility extends Ability {
   /* ------------------------------------------------------------------ */
 
   get instanceCount() {
-    return (
-      this._strandCount * this.spearMeshes.length +
-      this._rayCount * this.rayMeshes.length +
-      this._skyCount * this.skyMeshes.length
-    );
+    return 1 + this._rayCount * this.rayMeshes.length + this._skyCount * this.skyMeshes.length;
   }
 
   get impactDuration() {
@@ -283,9 +274,27 @@ export class HolyAbility extends Ability {
     return out;
   }
 
-  _bundleRadius(s) {
+  /**
+   * Aim the solid spear: local +Y becomes `heading`, tip leads.
+   * `tip` is where the point sits in world space.
+   */
+  _placeSpear(tip, heading, scale, fade) {
     const c = settings.holy;
-    return lerp(c.spreadNear, c.spread, Math.pow(saturate(s), Math.max(0.01, c.spreadCurve)));
+    const len = Math.max(0.2, c.spearLength) * Math.max(0.01, scale);
+    _heading.copy(heading);
+    if (_heading.lengthSq() < 1e-8) _heading.copy(this.direction);
+    _heading.normalize();
+
+    // Butt behind the tip so the weapon is a finite object, not a line to the hand.
+    this.spearRoot.position.copy(tip).addScaledVector(_heading, -len);
+    this.spearRoot.quaternion.setFromUnitVectors(_Y_UP, _heading);
+    this.spearRoot.scale.setScalar(len);
+    this.spearRoot.visible = scale > 0.02 && fade > 0.02;
+    this._spearScale = scale;
+    this._spearFade = fade;
+
+    this.spearMaterial.userData.sync(fade * (0.55 + 0.45 * scale));
+    this.spearAuraMaterial.userData.sync(fade * scale);
   }
 
   /* ------------------------------------------------------------------ */
@@ -301,10 +310,13 @@ export class HolyAbility extends Ability {
     this._brandDistance = 0;
     this._pillarReveal = 0;
     this._skyProgress = 0;
+    this._spearScale = 0;
+    this._spearFade = 1;
     this._seed = Math.random() * 100;
 
     for (const mesh of this.rayMeshes) mesh.visible = false;
     for (const mesh of this.skyMeshes) mesh.visible = false;
+    this.spearRoot.visible = false;
     this._muzzleFired = false;
 
     this._syncUniforms(1);
@@ -333,18 +345,9 @@ export class HolyAbility extends Ability {
     const g = settings.global;
     const state = this._state;
 
-    this._handPoint(state.origin);
-    this._impactPoint(state.target);
     state.side.copy(this.side);
-    state.progress = this.phase === AbilityPhase.TRAVEL ? this.u : 1;
     state.fade = fade;
     state.seed = this._seed;
-
-    this._strandCount = Math.max(1, Math.min(MAX_STRANDS, Math.round(c.strands)));
-    state.strands = this._strandCount;
-    this.spearGeometry.instanceCount = this._strandCount;
-
-    for (const material of this.spearMaterials) material.userData.syncSpear(state);
 
     this._rayCount = Math.max(1, Math.min(MAX_RAYS, Math.round(c.pillarRays)));
     state.rays = this._rayCount;
@@ -379,7 +382,7 @@ export class HolyAbility extends Ability {
     this.sparks.uniforms.uLifeScale.value = c.sparkLifetime * 0.5 * g.particleLifetime;
     this.sparks.uniforms.uSpeedScale.value = g.particleSpeed;
     this.sparks.uniforms.uOpacity.value = g.opacity;
-    this.sparks.uniforms.uGlow.value = c.glow * 0.55 * g.glow;
+    this.sparks.uniforms.uGlow.value = c.spearEmissive * 0.55 * g.glow;
     this.sparks.uniforms.uStretch.value = c.sparkStretch;
     this.sparks.uniforms.uTurbulence.value = 0.2 * g.turbulence;
 
@@ -473,79 +476,58 @@ export class HolyAbility extends Ability {
     this.lightBoost = c.lightIntensity * 0.7 * g.explosionIntensity;
   }
 
-  _spearFx(dt, scale) {
+  /**
+   * Short wake behind the *weapon* only — never a continuous shaft of light.
+   * Emits from the butt of the spear so it reads as a thrown object.
+   */
+  _trailFx(dt, scale) {
     const c = settings.holy;
     const g = settings.global;
     const time = frame.uTime.value;
-    const reach = this.phase === AbilityPhase.TRAVEL ? Math.max(0.02, this.u) : 1;
+    if (scale < 0.05) return;
 
-    let sparkCount = Math.round(this.sparkEmitter.tick(dt, c.sparkRate * scale) * g.particleCount);
+    // Butt sits at spearRoot.position; tip is ahead along heading.
+    _pos.copy(this.spearRoot.position);
+
+    let sparkCount = Math.round(this.sparkEmitter.tick(dt, c.trailRate * scale) * g.particleCount);
     if (sparkCount > 0) {
-      _emit.direction = _dir.copy(this.direction).multiplyScalar(0.35).setY(0.4).normalize();
-      _emit.speed = c.sparkSpeed;
-      _emit.speedVariance = 0.75;
-      _emit.spread = 0.9;
+      _emit.position = _pos;
+      _emit.radius = 0.08;
+      _emit.direction = _dir.copy(this.direction).multiplyScalar(-0.6).setY(0.15).normalize();
+      _emit.speed = c.sparkSpeed * 0.7;
+      _emit.speedVariance = 0.6;
+      _emit.spread = 0.55;
       _emit.inherit = null;
       _emit.anchor = null;
-      _emit.size = 0.12;
-      _emit.sizeVariance = 0.65;
-      _emit.life = c.sparkLifetime;
-      _emit.lifeVariance = 0.5;
+      _emit.size = 0.1;
+      _emit.sizeVariance = 0.5;
+      _emit.life = c.sparkLifetime * 0.7;
+      _emit.lifeVariance = 0.4;
       _emit.spin = 0;
       _emit.tint = null;
       _emit.time = time;
-
-      const batches = Math.min(sparkCount, SPARK_BATCHES);
-      const per = Math.ceil(sparkCount / batches);
-      while (sparkCount > 0) {
-        const s = randRange(0.05, 1) * reach;
-        this._axisPoint(s, _pos);
-        _emit.position = _pos;
-        _emit.radius = this._bundleRadius(s) * 1.2 + 0.04;
-        this.sparks.emit(Math.min(per, sparkCount), _emit);
-        sparkCount -= per;
-      }
+      this.sparks.emit(sparkCount, _emit);
     }
 
-    const moteCount = Math.round(this.moteEmitter.tick(dt, c.moteRate * scale) * g.particleCount);
+    const moteCount = Math.round(this.moteEmitter.tick(dt, c.moteRate * 0.45 * scale) * g.particleCount);
     if (moteCount > 0) {
-      const s = Math.random() * reach;
-      this._axisPoint(s, _pos);
       _emit.position = _pos;
-      _emit.radius = this._bundleRadius(s) * 1.5 + 0.15;
-      _emit.direction = _dir.set(0, 1, 0);
+      _emit.radius = 0.12;
+      _emit.direction = _dir.copy(this.direction).multiplyScalar(-0.3).setY(0.5).normalize();
       _emit.speed = c.moteSpeed;
-      _emit.speedVariance = 0.7;
-      _emit.spread = 1.0;
-      _emit.size = 0.07;
-      _emit.sizeVariance = 0.55;
-      _emit.life = c.moteLifetime;
-      _emit.lifeVariance = 0.45;
+      _emit.speedVariance = 0.55;
+      _emit.spread = 0.7;
+      _emit.size = 0.06;
+      _emit.sizeVariance = 0.5;
+      _emit.life = c.moteLifetime * 0.8;
+      _emit.lifeVariance = 0.4;
       _emit.spin = 0;
       _emit.time = time;
       this.motes.emit(moteCount, _emit);
     }
-
-    const hazeCount = Math.round(this.hazeEmitter.tick(dt, c.hazeRate * scale) * g.particleCount);
-    if (hazeCount > 0) {
-      this.pointAt(Math.random() * reach, _pos).setY(0.12);
-      _emit.position = _pos;
-      _emit.radius = c.brandRadius * 1.8;
-      _emit.direction = _dir.set(0, 1, 0);
-      _emit.speed = c.hazeSpeed;
-      _emit.speedVariance = 0.6;
-      _emit.spread = 0.85;
-      _emit.size = 0.7;
-      _emit.sizeVariance = 0.45;
-      _emit.life = c.hazeLifetime;
-      _emit.lifeVariance = 0.35;
-      _emit.spin = 0.25;
-      _emit.time = time;
-      this.haze.emit(hazeCount, _emit);
-    }
   }
 
-  /** Pale radiant brands under the travelling tip — light, not scorched earth. */
+  /** One soft brand under the tip as it passes — not a continuous beam scorch. */
   _groundFx() {
     const c = settings.holy;
     const step = 1 / Math.max(0.05, c.brandRate);
@@ -554,23 +536,11 @@ export class HolyAbility extends Ability {
       this._brandDistance += step;
       const s = saturate(this._brandDistance / this.length);
       this.pointAt(s, _pos);
-      const wander = this._bundleRadius(s) * 0.6;
-      _pos.x += this.side.x * randRange(-wander, wander);
-      _pos.z += this.side.z * randRange(-wander, wander);
-
-      this.ctx.decals.spawn(DecalType.FROST, _pos, {
-        radius: c.brandRadius * randRange(0.75, 1.2),
-        life: c.brandLife,
-        intensity: c.brandIntensity,
-        colorA: getColor(c.colorBrandA),
-        colorB: getColor(c.colorBrandB),
-        height: 0.012
-      });
 
       this.ctx.decals.spawn(DecalType.DUSTRING, _pos, {
-        radius: c.brandRadius * 0.7 * randRange(0.8, 1.15),
-        life: c.brandLife * 0.7,
-        intensity: c.brandIntensity * 0.55,
+        radius: c.brandRadius * 0.35 * randRange(0.8, 1.1),
+        life: c.brandLife * 0.5,
+        intensity: c.brandIntensity * 0.4,
         colorA: getColor(c.colorBrandB),
         colorB: getColor(c.colorBrandA),
         height: 0.01
@@ -636,9 +606,14 @@ export class HolyAbility extends Ability {
     this._syncUniforms(1);
 
     if (charging) {
-      // Park the light and FX on the hands while the clip winds up.
-      this._handPoint(this.position);
-      this._chargeFx(dt);
+      // Summon: spear grows in the hands while the cast clip winds up.
+      const grow = Easing.outCubic(this.releaseCharge);
+      this._handPoint(_pos);
+      // Tip slightly past the hand along the aim so it reads as "held forward".
+      _pos.addScaledVector(this.direction, c.spearLength * grow * 0.35);
+      this._placeSpear(_pos, this.direction, grow, 1);
+      this.position.copy(this.spearRoot.position).addScaledVector(this.direction, c.spearLength * grow * 0.5);
+      this._chargeFx(dt, grow);
       this.ctx.shake.rumble(c.chargeShake * this.releaseCharge * settings.global.cameraShake, dt);
       return;
     }
@@ -648,33 +623,48 @@ export class HolyAbility extends Ability {
       this._muzzleFx();
     }
 
-    this._axisPoint(this.u, this.position);
-    this._spearFx(dt, 1);
+    // Throw: whole weapon flies; tip leads at the front.
+    this._axisPoint(this.u, _pos);
+    this._headingAt(this.u, _heading);
+    this._placeSpear(_pos, _heading, 1, 1);
+    this.position.copy(_pos);
+
+    this._trailFx(dt, 1);
     this._groundFx();
     this.ctx.shake.rumble(c.rumble * settings.global.cameraShake, dt);
   }
 
-  /** Soft build-up in the hands before the spear is released. */
-  _chargeFx(dt) {
+  /** Unit direction of flight at fraction `s` (flat aim + slight sag). */
+  _headingAt(s, out) {
+    const eps = 0.02;
+    this._axisPoint(Math.min(1, s + eps), _target);
+    this._axisPoint(Math.max(0, s - eps), _skyOrigin);
+    out.subVectors(_target, _skyOrigin);
+    if (out.lengthSq() < 1e-8) return out.copy(this.direction);
+    return out.normalize();
+  }
+
+  /** Motes drawn into the forming spear — summon, not a charge orb. */
+  _chargeFx(dt, grow) {
     const c = settings.holy;
     const g = settings.global;
-    const charge = this.releaseCharge;
-    if (charge < 0.08) return;
+    if (grow < 0.08) return;
 
     this._handPoint(_pos);
-    const moteCount = Math.round(this.moteEmitter.tick(dt, c.moteRate * 0.55 * charge) * g.particleCount);
+    const moteCount = Math.round(this.moteEmitter.tick(dt, c.moteRate * 1.2 * grow) * g.particleCount);
     if (moteCount > 0) {
+      // Emit around the hand, pull toward the spear (negative spread read via direction).
       _emit.position = _pos;
-      _emit.radius = 0.12 + 0.1 * charge;
-      _emit.direction = _dir.copy(this.direction).multiplyScalar(0.4).setY(0.5).normalize();
-      _emit.speed = c.moteSpeed * 0.7;
-      _emit.speedVariance = 0.5;
-      _emit.spread = 0.7;
+      _emit.radius = 0.55 * (1.1 - 0.5 * grow);
+      _emit.direction = _dir.copy(this.direction).multiplyScalar(0.2).setY(0.35).normalize();
+      _emit.speed = c.moteSpeed * 0.9;
+      _emit.speedVariance = 0.55;
+      _emit.spread = 0.95;
       _emit.inherit = null;
       _emit.anchor = null;
-      _emit.size = 0.06;
+      _emit.size = 0.07;
       _emit.sizeVariance = 0.5;
-      _emit.life = c.moteLifetime * 0.7;
+      _emit.life = c.moteLifetime * 0.65;
       _emit.lifeVariance = 0.35;
       _emit.spin = 0;
       _emit.tint = null;
@@ -689,6 +679,8 @@ export class HolyAbility extends Ability {
     const time = frame.uTime.value;
 
     this._impactPoint(_pos);
+    // Spear plants at the hit — tip in the ground, then fades as judgment falls.
+    this._placeSpear(_pos, this.direction, 1, 1);
     for (const mesh of this.rayMeshes) mesh.visible = true;
     for (const mesh of this.skyMeshes) mesh.visible = true;
     this._skyProgress = 0;
@@ -835,7 +827,12 @@ export class HolyAbility extends Ability {
     this._syncUniforms(fade);
     this._axisPoint(1, this.position);
 
-    this._spearFx(dt, fade * (hold ? 0.45 : 0.2));
+    // Planted spear sinks / dims while sky judgment owns the read.
+    const spearScale = hold ? 1 : Math.max(0.05, fade);
+    const spearFade = hold ? lerp(1, 0.35, saturate(this.impactTime / 0.45)) : fade * 0.35;
+    this._impactPoint(_pos);
+    this._placeSpear(_pos, this.direction, spearScale, spearFade);
+
     this._pillarFx(dt, fade * (hold ? 1 : 0.4));
     this._skyFx(dt, fade * (hold ? 1 : 0.35));
 
@@ -884,15 +881,14 @@ export class HolyAbility extends Ability {
   }
 
   onDestroy() {
-    this._strandCount = 1;
     this._rayCount = 1;
     this._skyCount = 1;
     this._pillarReveal = 0;
     this._skyProgress = 0;
-    this.spearGeometry.instanceCount = 1;
+    this._spearScale = 0;
     this.rayGeometry.instanceCount = 1;
     this.skyGeometry.instanceCount = 1;
-    for (const material of this.spearMaterials) material.uniforms.uFade.value = 0;
+    this.spearRoot.visible = false;
     for (const material of this.rayMaterials) {
       material.uniforms.uFade.value = 0;
       material.uniforms.uReveal.value = 0;
@@ -906,10 +902,12 @@ export class HolyAbility extends Ability {
   }
 
   dispose() {
-    this.spearGeometry.dispose();
     this.rayGeometry.dispose();
     this.skyGeometry.dispose();
-    for (const material of this.spearMaterials) material.dispose();
+    this.spearMaterial.dispose();
+    this.spearAuraMaterial.dispose();
+    this.spear.traverse((o) => o.geometry?.dispose?.());
+    this.spearAura.traverse((o) => o.geometry?.dispose?.());
     for (const material of this.rayMaterials) material.dispose();
     for (const material of this.skyMaterials) material.dispose();
     super.dispose();
