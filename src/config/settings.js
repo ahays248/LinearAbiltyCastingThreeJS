@@ -1727,49 +1727,62 @@ export const settings = {
     /* --- the cast --- */
     range: 22.0,
     minRange: 2.0,
-    speed: 78.0, // spear tip travel, metres/second
-    lifetime: 2.4, // seconds spear + skybolt + pillar hold after impact
-    fadeTime: 0.85, // seconds they collapse
+    /**
+     * Seconds the body winds up before the spear leaves the hands. Matched to
+     * the cast clip so the VFX does not fire on click ahead of the gesture
+     * (same idea as Nova Beam's `charge`).
+     */
+    charge: 0.28,
+    chargeShake: 0.02,
+    speed: 95.0, // spear tip travel once released, metres/second
+    lifetime: 1.8, // seconds spear + skybolt + pillar hold after impact
+    fadeTime: 0.75, // seconds they collapse
     cooldown: 1.1,
-    castAnim: 'cast1',
+    castAnim: 'cast2', // throw-forward clip; cast1 is the two-hand beam pose
 
     /* --- where the spear leaves the caster --- */
-    handHeight: 1.3,
-    handForward: 0.52,
-    handSide: 0.12,
-    endHeight: 0.4,
-    sag: 0.08, // slight lift mid-span
+    // Tuned for cast2 at release: hand extended on the aim line, slightly off
+    // centre like a javelin rather than a two-hand beam orb.
+    handHeight: 1.38,
+    handForward: 0.78,
+    handSide: 0.14,
+    endHeight: 0.55,
+    sag: 0.04, // almost straight — a thrown spear, not a sagging beam
 
-    /* --- the spear bundle --- */
-    strands: 3, // thin side filaments around the spine (capped at 8)
-    spread: 0.14, // metres the bundle fans at the far end
-    spreadNear: 0.02,
-    spreadCurve: 1.5,
-    twist: 0.12,
-    twistSpeed: 0.25,
-    branchDim: 0.5,
+    /* --- the spear (weapon, not a multi-filament beam) --- */
+    strands: 1, // one shaft; side filaments read as a beam
+    spread: 0.0,
+    spreadNear: 0.0,
+    spreadCurve: 1.0,
+    twist: 0.0,
+    twistSpeed: 0.0,
+    branchDim: 1.0,
 
-    /* --- smooth shape of one filament --- */
-    wave: 0.05, // metres of soft undulation (not lightning kinks)
-    waveScale: 0.32, // waves per metre
-    crawl: 0.7,
-    pinch: 0.1,
+    /* --- smooth shape — kept tiny so it stays a rigid weapon --- */
+    wave: 0.012,
+    waveScale: 0.18,
+    crawl: 0.25,
+    pinch: 0.05,
     converge: 1.0,
 
-    /* --- the ribbon --- */
-    width: 0.038,
-    widthTip: 0.32,
-    widthCurve: 1.15,
-    coreWidth: 1.45,
-    coreSharp: 3.9,
-    glowWidth: 6.2,
-    glowFalloff: 2.1,
-    glowOpacity: 0.4,
-    softFade: 0.55,
-    tipGlow: 1.9,
-    tipLength: 0.09,
-    breath: 0.12, // soft brightness pulse (not a stutter)
-    breathSpeed: 3.0,
+    /* --- weapon silhouette (shaft + leaf head + point) --- */
+    width: 0.055, // half-width of the shaft at the grip, metres
+    widthTip: 0.82, // mid-shaft taper factor (head is separate)
+    widthCurve: 0.55, // gentle shaft taper before the head
+    headStart: 0.70, // fraction of length where the spearhead begins
+    headWidth: 2.55, // peak head half-width, × `width`
+    headPeak: 0.42, // where the leaf is fattest inside the head (0..1 of head)
+    tipPoint: 0.045, // last fraction pinches to a hard point
+    coreWidth: 1.1,
+    coreSharp: 4.8, // hard shaft edge — soft edges read as a beam
+    glowWidth: 2.6, // tight rim only (was 6+ like a beam halo)
+    glowFalloff: 2.8,
+    glowOpacity: 0.26,
+    softFade: 0.4,
+    tipGlow: 1.6,
+    tipLength: 0.06,
+    breath: 0.08,
+    breathSpeed: 2.4,
 
     /* --- colour --- */
     colorCore: '#fff8e8',

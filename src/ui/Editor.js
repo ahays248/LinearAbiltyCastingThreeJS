@@ -1570,6 +1570,8 @@ export class Editor {
     const cast = folder.addFolder('The cast');
     R(cast, c, 'range', 2, 60, 0.1, 'max range');
     R(cast, c, 'minRange', 0, 10, 0.1, 'min range');
+    R(cast, c, 'charge', 0, 1.5, 0.01, 'release delay (hands)');
+    R(cast, c, 'chargeShake', 0, 0.3, 0.005, 'wind-up rumble');
     R(cast, c, 'speed', 5, 300, 1, 'spear speed');
     R(cast, c, 'lifetime', 0.05, 6, 0.01, 'hold lifetime');
     R(cast, c, 'fadeTime', 0.05, 4, 0.01, 'collapse time');
@@ -1584,7 +1586,7 @@ export class Editor {
     R(anchor, c, 'sag', -2, 2, 0.01, 'mid-span bow');
 
     const bundle = folder.addFolder('The spear');
-    R(bundle, c, 'strands', 1, 8, 1, 'filaments');
+    R(bundle, c, 'strands', 1, 8, 1, 'shafts (1 = weapon)');
     R(bundle, c, 'spread', 0, 2, 0.01, 'fan at target');
     R(bundle, c, 'spreadNear', 0, 1, 0.01, 'fan at hand');
     R(bundle, c, 'spreadCurve', 0.2, 5, 0.01, 'fan curve');
@@ -1592,22 +1594,26 @@ export class Editor {
     R(bundle, c, 'twistSpeed', -4, 4, 0.01, 'twist speed');
     R(bundle, c, 'branchDim', 0, 1, 0.01, 'outer filament dim');
 
-    const shape = folder.addFolder('Smooth wave');
+    const shape = folder.addFolder('Shaft flex');
     R(shape, c, 'wave', 0, 1.5, 0.005, 'wave amplitude');
     R(shape, c, 'waveScale', 0.05, 4, 0.01, 'waves / metre');
     R(shape, c, 'crawl', -10, 10, 0.05, 'wave crawl');
     R(shape, c, 'pinch', 0.01, 0.5, 0.005, 'end pinch');
     R(shape, c, 'converge', 0, 1, 0.01, 'lock onto target');
 
-    const ribbon = folder.addFolder('The ribbon');
-    R(ribbon, c, 'width', 0.005, 0.4, 0.005, 'width at hand');
-    R(ribbon, c, 'widthTip', 0.02, 2, 0.01, 'width at target');
-    R(ribbon, c, 'widthCurve', 0.1, 4, 0.01, 'taper curve');
+    const ribbon = folder.addFolder('Weapon silhouette');
+    R(ribbon, c, 'width', 0.005, 0.4, 0.005, 'shaft width at grip');
+    R(ribbon, c, 'widthTip', 0.02, 2, 0.01, 'shaft taper factor');
+    R(ribbon, c, 'widthCurve', 0.1, 4, 0.01, 'shaft taper curve');
+    R(ribbon, c, 'headStart', 0.3, 0.95, 0.01, 'spearhead start');
+    R(ribbon, c, 'headWidth', 0.5, 6, 0.05, 'spearhead width ×');
+    R(ribbon, c, 'headPeak', 0.1, 0.9, 0.01, 'leaf fat point');
+    R(ribbon, c, 'tipPoint', 0.01, 0.2, 0.005, 'tip pinch length');
     R(ribbon, c, 'coreWidth', 1, 4, 0.01, 'spine thickness');
-    R(ribbon, c, 'coreSharp', 0.5, 12, 0.05, 'core sharpness');
-    R(ribbon, c, 'glowWidth', 1, 20, 0.1, 'halo width');
-    R(ribbon, c, 'glowFalloff', 0.2, 8, 0.05, 'halo falloff');
-    R(ribbon, c, 'glowOpacity', 0, 2, 0.01, 'halo opacity');
+    R(ribbon, c, 'coreSharp', 0.5, 12, 0.05, 'edge hardness');
+    R(ribbon, c, 'glowWidth', 1, 12, 0.1, 'rim halo width');
+    R(ribbon, c, 'glowFalloff', 0.2, 8, 0.05, 'rim falloff');
+    R(ribbon, c, 'glowOpacity', 0, 2, 0.01, 'rim opacity');
     R(ribbon, c, 'softFade', 0.02, 3, 0.01, 'soft intersection');
     R(ribbon, c, 'tipGlow', 0, 6, 0.05, 'leading-edge glow');
     R(ribbon, c, 'tipLength', 0.005, 0.4, 0.005, 'leading-edge length');

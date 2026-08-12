@@ -221,9 +221,35 @@ export class HolyAbility extends Ability {
     return Math.max(0.05, settings.holy.fadeTime);
   }
 
+  /** 0..1 through the wind-up before the spear leaves the hands. */
+  get releaseCharge() {
+    return saturate(this.age / Math.max(0.01, settings.holy.charge));
+  }
+
   lightShimmer() {
     const c = settings.holy;
     return 0.88 + 0.12 * Math.sin(this.age * c.breathSpeed) * Math.sin(this.age * 2.1);
+  }
+
+  /**
+   * Hold the spear at the hand until the cast clip has reached the throw.
+   *
+   * Same trick as Nova Beam's charge: the base class would send the front on
+   * frame one, which is why the VFX used to leave before the hands got there.
+   */
+  advance(dt) {
+    const c = this.config;
+    const charge = Math.max(0, c.charge);
+    if (this.age < charge) return false;
+
+    const speed = c.speed * settings.global.speed;
+    const since = this.age - charge;
+    this.front += speed * Easing.outQuad(saturate(since / 0.06)) * dt;
+
+    const previousU = this.u;
+    this.u = saturate(this.front / this.length);
+    this.pointAt(this.u, this.position);
+    return this.u >= 1 && previousU < 1;
   }
 
   /* ------------------------------------------------------------------ */
@@ -279,9 +305,9 @@ export class HolyAbility extends Ability {
 
     for (const mesh of this.rayMeshes) mesh.visible = false;
     for (const mesh of this.skyMeshes) mesh.visible = false;
+    this._muzzleFired = false;
 
     this._syncUniforms(1);
-    this._muzzleFx();
   }
 
   /** Sky entry point above the impact — live height from settings. */
@@ -403,6 +429,10 @@ export class HolyAbility extends Ability {
   /* Feedback                                                            */
   /* ------------------------------------------------------------------ */
 
+  /**
+   * Flash when the spear *actually* leaves the hands (end of charge), not on
+   * click. Called once from travel when the front first moves.
+   */
   _muzzleFx() {
     const c = settings.holy;
     const g = settings.global;
@@ -600,11 +630,57 @@ export class HolyAbility extends Ability {
   onTravel(dt) {
     this._pillarReveal = 0;
     this._skyProgress = 0;
+    const c = settings.holy;
+    const charging = this.age < Math.max(0, c.charge);
+
     this._syncUniforms(1);
+
+    if (charging) {
+      // Park the light and FX on the hands while the clip winds up.
+      this._handPoint(this.position);
+      this._chargeFx(dt);
+      this.ctx.shake.rumble(c.chargeShake * this.releaseCharge * settings.global.cameraShake, dt);
+      return;
+    }
+
+    if (!this._muzzleFired) {
+      this._muzzleFired = true;
+      this._muzzleFx();
+    }
+
     this._axisPoint(this.u, this.position);
     this._spearFx(dt, 1);
     this._groundFx();
-    this.ctx.shake.rumble(settings.holy.rumble * settings.global.cameraShake, dt);
+    this.ctx.shake.rumble(c.rumble * settings.global.cameraShake, dt);
+  }
+
+  /** Soft build-up in the hands before the spear is released. */
+  _chargeFx(dt) {
+    const c = settings.holy;
+    const g = settings.global;
+    const charge = this.releaseCharge;
+    if (charge < 0.08) return;
+
+    this._handPoint(_pos);
+    const moteCount = Math.round(this.moteEmitter.tick(dt, c.moteRate * 0.55 * charge) * g.particleCount);
+    if (moteCount > 0) {
+      _emit.position = _pos;
+      _emit.radius = 0.12 + 0.1 * charge;
+      _emit.direction = _dir.copy(this.direction).multiplyScalar(0.4).setY(0.5).normalize();
+      _emit.speed = c.moteSpeed * 0.7;
+      _emit.speedVariance = 0.5;
+      _emit.spread = 0.7;
+      _emit.inherit = null;
+      _emit.anchor = null;
+      _emit.size = 0.06;
+      _emit.sizeVariance = 0.5;
+      _emit.life = c.moteLifetime * 0.7;
+      _emit.lifeVariance = 0.35;
+      _emit.spin = 0;
+      _emit.tint = null;
+      _emit.time = frame.uTime.value;
+      this.motes.emit(moteCount, _emit);
+    }
   }
 
   onImpact() {

@@ -54,6 +54,10 @@ const SPEAR_VERTEX = /* glsl */ `
   uniform float uWidth;
   uniform float uWidthTip;
   uniform float uWidthCurve;
+  uniform float uHeadStart;
+  uniform float uHeadWidth;
+  uniform float uHeadPeak;
+  uniform float uTipPoint;
   uniform float uCoreWidth;
   uniform float uWidthScale;
   uniform float uFade;
@@ -64,6 +68,7 @@ const SPEAR_VERTEX = /* glsl */ `
   varying float vSide;
   varying float vStrand;
   varying float vViewZ;
+  varying float vHead;
 
   ${noiseGLSL}
 
@@ -91,13 +96,43 @@ const SPEAR_VERTEX = /* glsl */ `
     float ends = smoothstep(0.0, pinch, t) *
                  mix(1.0, smoothstep(0.0, pinch, 1.0 - t), clamp(uConverge, 0.0, 1.0));
 
-    vec2 offset = wave(t, seed, span) * ends;
+    // Almost no lateral freeload on the spine — a spear is a shaft, not a beam.
+    vec2 offset = wave(t, seed, span) * ends * (0.15 + 0.85 * radial);
 
     float angle = seed * TAU + (t * uTwist + uTime * uTwistSpeed) * TAU;
     float reach = mix(uSpreadNear, uSpread, pow(clamp(t, 0.0, 1.0), max(uSpreadCurve, 0.01)));
     offset += vec2(cos(angle), sin(angle)) * reach * radial;
 
     return axis + n1 * offset.x + n2 * offset.y;
+  }
+
+  /**
+   * Weapon silhouette, not a jet: constant-ish shaft, leaf head near the tip,
+   * hard point at the end. Beams use a smooth taper the whole way; this does not.
+   */
+  float spearHalfWidth(float t, float radial) {
+    float shaft = mix(1.0, uWidthTip, pow(clamp(t, 0.0, 1.0), max(uWidthCurve, 0.01)));
+
+    float headStart = clamp(uHeadStart, 0.05, 0.95);
+    float peakT = mix(headStart, 1.0, clamp(uHeadPeak, 0.05, 0.95));
+    float headUp = smoothstep(headStart, peakT, t);
+    float headDown = 1.0 - smoothstep(peakT, 1.0, t);
+    float head = headUp * headDown;
+    // Soften the leaf so it is not a triangle spike.
+    head = pow(max(head, 0.0), 0.85);
+
+    float profile = mix(shaft, uHeadWidth, head);
+
+    // Grip is slightly thicker than mid-shaft.
+    profile *= mix(1.18, 1.0, smoothstep(0.0, 0.12, t));
+
+    // Hard point: last fraction pinches to a tip (a beam never does this).
+    float tip = max(uTipPoint, 1e-3);
+    profile *= mix(0.06, 1.0, 1.0 - smoothstep(1.0 - tip, 1.0, t));
+
+    float halfWidth = uWidth * uWidthScale * profile;
+    halfWidth *= mix(uCoreWidth, 0.55, radial);
+    return halfWidth * uFade;
   }
 
   void main() {
@@ -117,6 +152,10 @@ const SPEAR_VERTEX = /* glsl */ `
     float radial = uStrands <= 1.0 ? 0.0 : aStrand / (uStrands - 1.0);
     vStrand = radial;
 
+    float headStart = clamp(uHeadStart, 0.05, 0.95);
+    float peakT = mix(headStart, 1.0, clamp(uHeadPeak, 0.05, 0.95));
+    vHead = smoothstep(headStart, peakT, t) * (1.0 - smoothstep(peakT, 1.0, t));
+
     vec3 here = spearPoint(t, seed, radial, n1, n2, span);
 
     float step_ = 0.02;
@@ -132,10 +171,7 @@ const SPEAR_VERTEX = /* glsl */ `
     float bl = length(binormal);
     binormal = bl > 1e-4 ? binormal / bl : n1;
 
-    float halfWidth = uWidth * uWidthScale;
-    halfWidth *= mix(1.0, uWidthTip, pow(clamp(t, 0.0, 1.0), max(uWidthCurve, 0.01)));
-    halfWidth *= mix(uCoreWidth, 1.0, radial);
-    halfWidth *= uFade;
+    float halfWidth = spearHalfWidth(t, radial);
 
     vec4 mv = viewMatrix * vec4(here + binormal * side * halfWidth, 1.0);
     vViewZ = mv.z;
@@ -174,6 +210,7 @@ const SPEAR_FRAGMENT = /* glsl */ `
   varying float vSide;
   varying float vStrand;
   varying float vViewZ;
+  varying float vHead;
 
   ${noiseGLSL}
   ${commonGLSL}
@@ -186,20 +223,23 @@ const SPEAR_FRAGMENT = /* glsl */ `
     float v = clamp(abs(vSide), 0.0, 1.0);
 
     #ifdef HOLY_GLOW
+      // Tight halo — a weapon rim, not a beam bloom.
       float profile = pow(1.0 - v, max(uGlowFalloff, 0.05));
       vec3 color = mix(uColorHalo, uColorOuter, profile);
-      float alpha = profile;
+      float alpha = profile * 0.75;
     #else
+      // Harder edge on the shaft; brighter fill in the leaf head.
       float profile = pow(1.0 - v, max(uCoreSharp, 0.05));
-      vec3 color = mix(uColorOuter, uColorInner, smoothstep(0.0, 0.5, profile));
-      color = mix(color, uColorCore, smoothstep(0.4, 1.0, profile));
+      vec3 color = mix(uColorOuter, uColorInner, smoothstep(0.0, 0.55, profile));
+      color = mix(color, uColorCore, smoothstep(0.5, 1.0, profile));
+      color = mix(color, uColorCore, vHead * 0.35);
       float alpha = profile;
     #endif
 
-    // Soft leading edge — a charged point, not a restriking tip.
+    // Hot point of the spearhead as it travels.
     color += uColorCore * smoothstep(uProgress - tip * 2.0, uProgress, vT) * uTipGlow;
+    color += uColorInner * vHead * 0.25;
 
-    // Gentle breath instead of lightning stutter.
     float breath = 1.0 - uBreath * (0.5 + 0.5 * sin(uTime * uBreathSpeed + uSeed));
 
     alpha *= drawn * breath * uFade * uPassOpacity * uOpacity;
@@ -397,21 +437,25 @@ export function createHolyMaterial(pass = HolyPass.SPEAR_CORE) {
       uTwistSpeed: { value: 0.2 },
       uBranchDim: { value: 0.55 },
 
-      uWave: { value: 0.06 },
-      uWaveScale: { value: 0.35 },
-      uCrawl: { value: 0.8 },
-      uPinch: { value: 0.1 },
+      uWave: { value: 0.02 },
+      uWaveScale: { value: 0.2 },
+      uCrawl: { value: 0.4 },
+      uPinch: { value: 0.06 },
       uConverge: { value: 1.0 },
 
-      uWidth: { value: 0.04 },
-      uWidthTip: { value: 0.35 },
-      uWidthCurve: { value: 1.2 },
-      uCoreWidth: { value: 1.4 },
-      uCoreSharp: { value: 3.8 },
-      uGlowFalloff: { value: 2.0 },
-      uWidthScale: { value: isGlowPass ? 6.5 : 1 },
-      uPassOpacity: { value: isGlowPass ? 0.38 : 1 },
-      uSoftFade: { value: 0.55 },
+      uWidth: { value: 0.055 },
+      uWidthTip: { value: 0.85 },
+      uWidthCurve: { value: 0.6 },
+      uHeadStart: { value: 0.72 },
+      uHeadWidth: { value: 2.4 },
+      uHeadPeak: { value: 0.45 },
+      uTipPoint: { value: 0.05 },
+      uCoreWidth: { value: 1.15 },
+      uCoreSharp: { value: 4.6 },
+      uGlowFalloff: { value: 2.6 },
+      uWidthScale: { value: isGlowPass ? 2.8 : 1 },
+      uPassOpacity: { value: isGlowPass ? 0.28 : 1 },
+      uSoftFade: { value: 0.45 },
 
       uBreath: { value: 0.12 },
       uBreathSpeed: { value: 3.2 },
@@ -468,6 +512,10 @@ export function createHolyMaterial(pass = HolyPass.SPEAR_CORE) {
     u.uWidth.value = c.width;
     u.uWidthTip.value = c.widthTip;
     u.uWidthCurve.value = c.widthCurve;
+    u.uHeadStart.value = c.headStart;
+    u.uHeadWidth.value = c.headWidth;
+    u.uHeadPeak.value = c.headPeak;
+    u.uTipPoint.value = c.tipPoint;
     u.uCoreWidth.value = c.coreWidth;
     u.uCoreSharp.value = c.coreSharp;
     u.uGlowFalloff.value = c.glowFalloff;
