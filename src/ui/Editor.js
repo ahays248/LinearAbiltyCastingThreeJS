@@ -1597,16 +1597,32 @@ export class Editor {
 
     const spear = folder.addFolder('The spear (solid)');
     R(spear, c, 'spearLength', 0.6, 5, 0.05, 'length (metres)');
-    R(spear, c, 'spearEmissive', 0, 6, 0.05, 'metal glow');
-    R(spear, c, 'spearAura', 0, 3, 0.05, 'soft aura');
+    R(spear, c, 'spearEmissive', 0, 4, 0.05, 'body ember');
+    R(spear, c, 'spearEdgeEmissive', 0, 8, 0.05, 'blade heat');
+    R(spear, c, 'spearAura', 0, 4, 0.05, 'aura');
     R(spear, c, 'spearMetalness', 0, 1, 0.01, 'metalness');
     R(spear, c, 'spearRoughness', 0, 1, 0.01, 'roughness');
     R(spear, c, 'trailRate', 0, 600, 1, 'wake particles');
-    R(spear, c, 'breath', 0, 1, 0.01, 'brightness breath');
-    R(spear, c, 'breathSpeed', 0.2, 12, 0.05, 'breath rate');
     spear.addColor(c, 'colorSpearBody').name('body');
-    spear.addColor(c, 'colorSpearGlow').name('glow');
-    R(spear, c, 'opacity', 0, 2, 0.01, 'opacity');
+    spear.addColor(c, 'colorSpearEmber').name('body ember');
+    spear.addColor(c, 'colorSpearEdge').name('edge metal');
+    spear.addColor(c, 'colorSpearGlow').name('hot glow');
+
+    const flair = folder.addFolder('Summon flair');
+    R(flair, c, 'summonSpinSpeed', 0, 6, 0.05, 'shaft spin');
+    R(flair, c, 'summonPulse', 0, 2, 0.01, 'heat pulse');
+    R(flair, c, 'summonPulseSpeed', 0.5, 20, 0.1, 'pulse rate');
+    R(flair, c, 'summonOrbit', 0.1, 2, 0.05, 'orbit radius');
+    R(flair, c, 'summonOrbitSpeed', 0, 12, 0.1, 'orbit speed');
+    R(flair, c, 'summonOrbitRate', 0, 400, 1, 'orbit sparks / s');
+    R(flair, c, 'summonMoteRate', 0, 500, 1, 'forge motes / s');
+    R(flair, c, 'summonRainRate', 0, 300, 1, 'sky ash / s');
+    R(flair, c, 'summonFormBurst', 0.2, 5, 0.05, 'form-up burst');
+    R(flair, c, 'summonFormFlash', 0, 1, 0.01, 'form-up flash');
+    R(flair, c, 'summonFormSparks', 0, 200, 1, 'form-up sparks');
+    R(flair, c, 'breath', 0, 1, 0.01, 'brightness breath');
+    R(flair, c, 'breathSpeed', 0.2, 12, 0.05, 'breath rate');
+    R(flair, c, 'opacity', 0, 2, 0.01, 'opacity');
 
     const ground = folder.addFolder('Radiant brands');
     R(ground, c, 'brandRate', 0.05, 8, 0.05, 'brands / metre');

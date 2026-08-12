@@ -1766,17 +1766,32 @@ export const settings = {
     endHeight: 0.55,
     sag: 0.04, // almost straight — a thrown spear, not a sagging beam
 
-    /* --- solid summoned spear (mesh projectile, not a beam ribbon) --- */
-    spearLength: 2.0, // metres tip-to-butt
-    spearEmissive: 1.55, // body glow
-    spearAura: 0.85, // soft shell around the metal
-    spearMetalness: 0.72,
-    spearRoughness: 0.28,
-    colorSpearBody: '#f0c86a',
-    colorSpearGlow: '#ffe6a0',
-    trailRate: 90, // particles only in the wake of the weapon
-    breath: 0.08,
-    breathSpeed: 2.4,
+    /* --- solid summoned spear (menacing dark metal + hot edge) --- */
+    spearLength: 2.15, // metres tip-to-butt
+    spearEmissive: 1.1, // dark body ember (kept low — edge carries heat)
+    spearEdgeEmissive: 3.2, // blade / barb / spike heat
+    spearAura: 1.15, // soft shell — pulses harder while summoning
+    spearMetalness: 0.88,
+    spearRoughness: 0.36,
+    colorSpearBody: '#1e1a18', // cold forged iron
+    colorSpearEmber: '#5a3810', // banked heat in the metal
+    colorSpearEdge: '#ffe2a8', // pale edge metal
+    colorSpearGlow: '#ff8a1a', // hot orange menace (not soft gold)
+    trailRate: 110, // particles only in the wake of the weapon
+    /* --- summon flair --- */
+    summonSpinSpeed: 1.35, // shaft roll while held, rad/s feel
+    summonPulse: 0.55, // heat pulse depth during hold
+    summonPulseSpeed: 7.5,
+    summonOrbit: 0.55, // orbit ring radius, metres
+    summonOrbitSpeed: 4.2,
+    summonOrbitRate: 95, // orbiting sparks / s
+    summonMoteRate: 140, // forge embers / s
+    summonRainRate: 70, // sky ash falling onto the spear / s
+    summonFormBurst: 1.6, // shell radius when fully forged
+    summonFormFlash: 0.18,
+    summonFormSparks: 55,
+    breath: 0.1,
+    breathSpeed: 2.8,
     softFade: 0.55, // still used by skybolt / god-ray soft intersections
     opacity: 1.0,
     // God-ray / shared warm palette (impact pillar, not the thrown mesh)

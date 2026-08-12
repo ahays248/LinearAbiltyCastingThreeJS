@@ -351,42 +351,100 @@ export function createAsteroidGeometry({
  *
  * Unit height 1 along **local +Y**: butt at y = 0, tip at y = 1. The ability
  * scales the root by length in metres and aims +Y along the flight heading, so
- * the tip leads and the shaft trails. Parts share one material; proportions are
- * fixed here and read as a lance at any length.
+ * the tip leads and the shaft trails.
  *
- * @param {import('three').Material} material
+ * Two materials sell a **menacing** read: dark metal body, hot-edge accents on
+ * the blade, barbs and guard tips (`edgeMaterial`). If only one material is
+ * passed, everything shares it.
+ *
+ * @param {import('three').Material} bodyMaterial
+ * @param {import('three').Material} [edgeMaterial]
  * @returns {Group}
  */
-export function createSpearMesh(material) {
+export function createSpearMesh(bodyMaterial, edgeMaterial) {
+  const edge = edgeMaterial ?? bodyMaterial;
   const root = new Group();
   root.name = 'Spear';
 
-  // Slightly tapered shaft — thicker at the grip, thinner under the head.
-  const shaft = new Mesh(new CylinderGeometry(0.028, 0.042, 0.68, 12, 1, false), material);
-  shaft.position.y = 0.34;
-  shaft.castShadow = true;
-  shaft.receiveShadow = true;
+  const mark = (mesh, cast = true) => {
+    mesh.castShadow = cast;
+    mesh.receiveShadow = cast;
+    return mesh;
+  };
 
-  // Small cross-guard so it reads as a weapon, not a stick.
-  const guard = new Mesh(new CylinderGeometry(0.09, 0.09, 0.028, 8, 1, false), material);
-  guard.position.y = 0.69;
-  guard.castShadow = true;
+  // Faceted shaft (6 sides) — reads as forged iron, not a smooth pipe.
+  const shaft = mark(
+    new Mesh(new CylinderGeometry(0.024, 0.04, 0.62, 6, 1, false), bodyMaterial)
+  );
+  shaft.position.y = 0.31;
 
-  // Leaf head: long cone with a second flatter cone for the wings.
-  const head = new Mesh(new ConeGeometry(0.085, 0.26, 8, 1, false), material);
-  head.position.y = 0.68 + 0.13;
-  head.castShadow = true;
+  // Collars so the grip has weight.
+  const collarLow = mark(
+    new Mesh(new CylinderGeometry(0.046, 0.046, 0.03, 6, 1, false), bodyMaterial)
+  );
+  collarLow.position.y = 0.08;
+  const collarHigh = mark(
+    new Mesh(new CylinderGeometry(0.038, 0.038, 0.024, 6, 1, false), bodyMaterial)
+  );
+  collarHigh.position.y = 0.58;
 
-  const wings = new Mesh(new ConeGeometry(0.12, 0.14, 8, 1, false), material);
-  wings.position.y = 0.72;
-  wings.castShadow = true;
+  // Wide brutal cross-guard.
+  const guard = mark(
+    new Mesh(new CylinderGeometry(0.12, 0.12, 0.032, 6, 1, false), bodyMaterial)
+  );
+  guard.position.y = 0.64;
+  guard.rotation.z = Math.PI / 2;
+  guard.scale.set(1, 0.22, 1);
 
-  // Pommel mass at the butt.
-  const pommel = new Mesh(new SphereGeometry(0.048, 10, 8), material);
-  pommel.position.y = 0.02;
-  pommel.castShadow = true;
+  // Hot guard spikes left / right (unique geos so dispose is safe).
+  const spikeL = mark(new Mesh(new ConeGeometry(0.028, 0.11, 5, 1, false), edge));
+  spikeL.position.set(-0.13, 0.64, 0);
+  spikeL.rotation.z = Math.PI / 2;
+  const spikeR = mark(new Mesh(new ConeGeometry(0.028, 0.11, 5, 1, false), edge));
+  spikeR.position.set(0.13, 0.64, 0);
+  spikeR.rotation.z = -Math.PI / 2;
 
-  root.add(shaft, guard, head, wings, pommel);
+  // Long cruel blade — flat-shaded facets on a low-segment cone.
+  const head = mark(new Mesh(new ConeGeometry(0.07, 0.3, 6, 1, false), edge));
+  head.position.y = 0.64 + 0.15;
+
+  // Reverse barbs under the blade (menace, not a clean javelin).
+  const barbA = mark(new Mesh(new ConeGeometry(0.045, 0.1, 5, 1, false), edge));
+  barbA.position.set(0.05, 0.7, 0);
+  barbA.rotation.z = -2.4;
+  const barbB = mark(new Mesh(new ConeGeometry(0.045, 0.1, 5, 1, false), edge));
+  barbB.position.set(-0.05, 0.7, 0);
+  barbB.rotation.z = 2.4;
+  const barbC = mark(new Mesh(new ConeGeometry(0.045, 0.1, 5, 1, false), edge));
+  barbC.position.set(0, 0.74, 0.05);
+  barbC.rotation.x = 2.4;
+
+  // Secondary wing plate behind the tip.
+  const wings = mark(new Mesh(new ConeGeometry(0.1, 0.12, 6, 1, false), bodyMaterial));
+  wings.position.y = 0.68;
+
+  // Spiked pommel — can plant or crack a skull either end.
+  const pommel = mark(new Mesh(new SphereGeometry(0.042, 8, 6), bodyMaterial));
+  pommel.position.y = 0.025;
+  const pommelSpike = mark(new Mesh(new ConeGeometry(0.02, 0.08, 5, 1, false), edge));
+  pommelSpike.position.y = -0.02;
+  pommelSpike.rotation.x = Math.PI;
+
+  root.add(
+    shaft,
+    collarLow,
+    collarHigh,
+    guard,
+    spikeL,
+    spikeR,
+    head,
+    wings,
+    barbA,
+    barbB,
+    barbC,
+    pommel,
+    pommelSpike
+  );
   return root;
 }
 

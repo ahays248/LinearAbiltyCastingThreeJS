@@ -3,6 +3,7 @@ import { Ability, AbilityPhase } from './Ability.js';
 import { createHolyRayMaterial, createHolySkyboltMaterial } from '../materials/HolyMaterial.js';
 import {
   createHolySpearMaterial,
+  createHolySpearEdgeMaterial,
   createHolySpearAuraMaterial
 } from '../materials/HolySpearMaterial.js';
 import { createBoltRibbonGeometry, createSpearMesh } from '../assets/ProceduralGeometry.js';
@@ -62,15 +63,20 @@ export class HolyAbility extends Ability {
     this.rayGeometry = createBoltRibbonGeometry(64, MAX_RAYS);
     this.skyGeometry = createBoltRibbonGeometry(SKY_NODES, MAX_SKY_STRANDS);
 
-    // Solid weapon (object), not a ribbon beam.
+    // Solid weapon: dark body + hot edge accents + soft aura.
     this.spearMaterial = createHolySpearMaterial(this.ctx.environment);
+    this.spearEdgeMaterial = createHolySpearEdgeMaterial(this.ctx.environment);
     this.spearAuraMaterial = createHolySpearAuraMaterial();
-    this.spear = createSpearMesh(this.spearMaterial);
-    this.spearAura = createSpearMesh(this.spearAuraMaterial);
-    this.spearAura.scale.setScalar(1.12);
+    this.spear = createSpearMesh(this.spearMaterial, this.spearEdgeMaterial);
+    this.spearAura = createSpearMesh(this.spearAuraMaterial, this.spearAuraMaterial);
+    this.spearAura.scale.setScalar(1.14);
     this.spearRoot = new Group();
     this.spearRoot.name = 'HolySpearRoot';
-    this.spearRoot.add(this.spearAura, this.spear);
+    // Spin group: aura+blade rotate during summon for flair without spinning flight heading.
+    this.spearSpin = new Group();
+    this.spearSpin.name = 'HolySpearSpin';
+    this.spearSpin.add(this.spearAura, this.spear);
+    this.spearRoot.add(this.spearSpin);
     this.spearRoot.visible = false;
     this.spearRoot.layers.set(LAYER.VFX);
     this.spear.traverse((o) => o.layers?.set(LAYER.VFX));
@@ -117,6 +123,8 @@ export class HolyAbility extends Ability {
     this._skyProgress = 0;
     this._spearScale = 0;
     this._spearFade = 1;
+    this._summonFormed = false;
+    this._summonSpin = 0;
 
     this._state = {
       origin: new Vector3(),
@@ -278,7 +286,11 @@ export class HolyAbility extends Ability {
    * Aim the solid spear: local +Y becomes `heading`, tip leads.
    * `tip` is where the point sits in world space.
    */
-  _placeSpear(tip, heading, scale, fade) {
+  /**
+   * @param {number} [pulse=1] summon menace pulse (1 = calm flight)
+   * @param {number} [spin=0] radians spun about the shaft during summon
+   */
+  _placeSpear(tip, heading, scale, fade, pulse = 1, spin = 0) {
     const c = settings.holy;
     const len = Math.max(0.2, c.spearLength) * Math.max(0.01, scale);
     _heading.copy(heading);
@@ -290,11 +302,17 @@ export class HolyAbility extends Ability {
     this.spearRoot.quaternion.setFromUnitVectors(_Y_UP, _heading);
     this.spearRoot.scale.setScalar(len);
     this.spearRoot.visible = scale > 0.02 && fade > 0.02;
+    this.spearSpin.rotation.y = spin;
+    // Aura breathes with pulse so the weapon feels alive while held.
+    const auraScale = 1.1 + 0.12 * (pulse - 1) + 0.04 * Math.sin(this.age * 9);
+    this.spearAura.scale.setScalar(auraScale);
     this._spearScale = scale;
     this._spearFade = fade;
 
-    this.spearMaterial.userData.sync(fade * (0.55 + 0.45 * scale));
-    this.spearAuraMaterial.userData.sync(fade * scale);
+    const glow = fade * (0.55 + 0.45 * scale);
+    this.spearMaterial.userData.sync(glow, pulse);
+    this.spearEdgeMaterial.userData.sync(glow, pulse);
+    this.spearAuraMaterial.userData.sync(fade * scale, pulse);
   }
 
   /* ------------------------------------------------------------------ */
@@ -312,6 +330,8 @@ export class HolyAbility extends Ability {
     this._skyProgress = 0;
     this._spearScale = 0;
     this._spearFade = 1;
+    this._summonFormed = false;
+    this._summonSpin = 0;
     this._seed = Math.random() * 100;
 
     for (const mesh of this.rayMeshes) mesh.visible = false;
@@ -610,10 +630,20 @@ export class HolyAbility extends Ability {
       // lower into the hands before the throw.
       const chargeT = this.releaseCharge;
       const grow = this._summonPose(chargeT, _pos, _heading);
-      this._placeSpear(_pos, _heading, grow, 1);
-      this.position.copy(this.spearRoot.position).addScaledVector(_heading, c.spearLength * grow * 0.5);
+      // Slow roll about the shaft + heat pulse while held.
+      this._summonSpin += dt * c.summonSpinSpeed * (0.4 + grow);
+      const pulse =
+        1 +
+        c.summonPulse *
+          (0.55 + 0.45 * Math.sin(this.age * c.summonPulseSpeed)) *
+          grow;
+      this._placeSpear(_pos, _heading, grow, 1, pulse, this._summonSpin);
+      this.position
+        .copy(this.spearRoot.position)
+        .addScaledVector(_heading, c.spearLength * grow * 0.5);
       this._chargeFx(dt, grow, chargeT);
       this.ctx.shake.rumble(c.chargeShake * chargeT * settings.global.cameraShake, dt);
+      this.lightBoost = Math.max(this.lightBoost, c.spearEmissive * 0.35 * pulse * grow);
       return;
     }
 
@@ -703,61 +733,143 @@ export class HolyAbility extends Ability {
   }
 
   /**
-   * Motes drawn toward the forming spear — denser while it hangs in the sky so
-   * the long hold still feels alive.
+   * Summon flair: inward motes, orbiting embers, sky streaks, and a one-shot
+   * "forged" burst when the spear first reaches full size.
    */
   _chargeFx(dt, grow, chargeT) {
     const c = settings.holy;
     const g = settings.global;
-    if (grow < 0.08) return;
+    const time = frame.uTime.value;
+    if (grow < 0.06) return;
 
-    // Emit around the raised grip / mid-shaft (not the sky tip alone).
+    // Mid-shaft world position (spinning spear root).
     _pos.copy(this.spearRoot.position);
-    _pos.y += c.spearLength * grow * 0.45;
+    _pos.addScaledVector(_heading.lengthSq() > 0.5 ? _heading : _Y_UP, c.spearLength * grow * 0.5);
 
-    const holdBoost = chargeT > c.summonGrow && chargeT < c.summonHold ? 1.35 : 1;
+    const holding = chargeT > c.summonGrow && chargeT < c.summonHold;
+    const holdBoost = holding ? 1.55 : 1;
+    const formBoost = grow < 0.95 ? 1.25 : 1;
+
+    /* --- forge: embers drawn into the weapon --- */
     const moteCount = Math.round(
-      this.moteEmitter.tick(dt, c.moteRate * 1.4 * grow * holdBoost) * g.particleCount
+      this.moteEmitter.tick(dt, c.summonMoteRate * grow * holdBoost * formBoost) * g.particleCount
     );
     if (moteCount > 0) {
       _emit.position = _pos;
-      _emit.radius = 0.7 * (1.15 - 0.4 * grow);
-      _emit.direction = _dir.set(0, -0.35, 0).addScaledVector(this.direction, 0.15).normalize();
-      _emit.speed = c.moteSpeed * 0.85;
-      _emit.speedVariance = 0.55;
+      _emit.radius = c.summonOrbit * (1.2 - 0.35 * grow);
+      _emit.direction = _dir.set(0, -0.25, 0).addScaledVector(this.direction, 0.1).normalize();
+      _emit.speed = c.moteSpeed * 1.1;
+      _emit.speedVariance = 0.6;
       _emit.spread = 1.0;
       _emit.inherit = null;
       _emit.anchor = null;
-      _emit.size = 0.075;
-      _emit.sizeVariance = 0.5;
-      _emit.life = c.moteLifetime * 0.75;
+      _emit.size = 0.08;
+      _emit.sizeVariance = 0.55;
+      _emit.life = c.moteLifetime * 0.7;
       _emit.lifeVariance = 0.4;
-      _emit.spin = 0;
+      _emit.spin = 2;
       _emit.tint = null;
-      _emit.time = frame.uTime.value;
+      _emit.time = time;
       this.motes.emit(moteCount, _emit);
     }
 
-    // Soft glitter while the full spear is on display.
-    if (grow > 0.85) {
-      const glitterCount = Math.round(
-        this.glitterEmitter.tick(dt, c.glitterRate * 0.35 * holdBoost) * g.particleCount
+    /* --- orbiting sparks around the shaft (menace ring) --- */
+    if (grow > 0.35) {
+      const orbitCount = Math.round(
+        this.sparkEmitter.tick(dt, c.summonOrbitRate * grow * holdBoost) * g.particleCount
       );
-      if (glitterCount > 0) {
-        _emit.position = _pos;
-        _emit.radius = 0.35;
-        _emit.direction = _dir.set(0, 1, 0);
-        _emit.speed = c.glitterSpeed * 0.5;
-        _emit.speedVariance = 0.5;
-        _emit.spread = 0.9;
-        _emit.size = 0.05;
+      if (orbitCount > 0) {
+        const angle = this.age * c.summonOrbitSpeed + this._seed;
+        const r = c.summonOrbit * (0.55 + 0.45 * grow);
+        _target.copy(_pos);
+        _target.x += Math.cos(angle) * r * this.side.x + Math.sin(angle) * r * this.direction.x;
+        _target.z += Math.cos(angle) * r * this.side.z + Math.sin(angle) * r * this.direction.z;
+        _target.y += Math.sin(angle * 1.7) * 0.15;
+        _emit.position = _target;
+        _emit.radius = 0.06;
+        // Tangential so sparks skim the ring rather than explode outward.
+        _emit.direction = _dir
+          .set(-Math.sin(angle), 0.15, Math.cos(angle))
+          .normalize();
+        _emit.speed = c.sparkSpeed * 0.55;
+        _emit.speedVariance = 0.4;
+        _emit.spread = 0.35;
+        _emit.size = 0.1;
         _emit.sizeVariance = 0.45;
-        _emit.life = c.glitterLifetime * 0.6;
+        _emit.life = c.sparkLifetime * 0.55;
         _emit.lifeVariance = 0.35;
         _emit.spin = 0;
-        _emit.time = frame.uTime.value;
-        this.glitter.emit(glitterCount, _emit);
+        _emit.time = time;
+        this.sparks.emit(orbitCount, _emit);
       }
+    }
+
+    /* --- sky ash falling onto the forming spear --- */
+    if (grow > 0.2) {
+      const rainCount = Math.round(
+        this.glitterEmitter.tick(dt, c.summonRainRate * grow * holdBoost) * g.particleCount
+      );
+      if (rainCount > 0) {
+        _target.copy(_pos);
+        _target.y += 1.2 + 0.8 * grow;
+        _emit.position = _target;
+        _emit.radius = c.summonOrbit * 0.9;
+        _emit.direction = _dir.set(0, -1, 0);
+        _emit.speed = 1.8 + 1.2 * grow;
+        _emit.speedVariance = 0.5;
+        _emit.spread = 0.35;
+        _emit.size = 0.055;
+        _emit.sizeVariance = 0.5;
+        _emit.life = 0.7;
+        _emit.lifeVariance = 0.35;
+        _emit.spin = 0;
+        _emit.time = time;
+        this.glitter.emit(rainCount, _emit);
+      }
+    }
+
+    /* --- one-shot: forged complete --- */
+    if (!this._summonFormed && grow >= 0.98) {
+      this._summonFormed = true;
+      this.ctx.bursts.spawn(BurstMode.AIR, _pos, {
+        radius: 0.25,
+        endRadius: c.summonFormBurst * g.explosionIntensity,
+        life: 0.55,
+        intensity: 1.4,
+        opacity: 0.9,
+        fresnel: 1.8,
+        displace: 0.45,
+        colorA: getColor(c.colorSpearGlow),
+        colorB: getColor(c.colorSpearEdge),
+        colorC: getColor(c.colorCore)
+      });
+      _target.copy(this.origin).setY(0.02);
+      this.ctx.decals.spawn(DecalType.SHOCKWAVE, _target, {
+        radius: 2.2 * g.explosionIntensity,
+        life: 0.55,
+        width: 0.04,
+        intensity: 0.75,
+        colorA: getColor(c.colorSpearGlow),
+        colorB: getColor(c.colorCore)
+      });
+      this.ctx.flash.trigger(
+        getColor(c.colorSpearGlow),
+        c.summonFormFlash * g.explosionIntensity
+      );
+      this.lightBoost = c.lightIntensity * 0.9 * g.explosionIntensity;
+      this.ctx.shake.add(0.22 * g.cameraShake, 4, 18);
+
+      _emit.position = _pos;
+      _emit.radius = 0.2;
+      _emit.direction = _dir.set(0, 1, 0);
+      _emit.speed = c.sparkSpeed * 1.4;
+      _emit.speedVariance = 0.7;
+      _emit.spread = 1.0;
+      _emit.size = 0.12;
+      _emit.life = c.sparkLifetime;
+      _emit.time = time;
+      this.sparks.emit(Math.round(c.summonFormSparks * g.particleCount), _emit);
+      this.glitter.emit(Math.round(c.summonFormSparks * 0.7 * g.particleCount), _emit);
     }
   }
 
@@ -993,6 +1105,7 @@ export class HolyAbility extends Ability {
     this.rayGeometry.dispose();
     this.skyGeometry.dispose();
     this.spearMaterial.dispose();
+    this.spearEdgeMaterial.dispose();
     this.spearAuraMaterial.dispose();
     this.spear.traverse((o) => o.geometry?.dispose?.());
     this.spearAura.traverse((o) => o.geometry?.dispose?.());
