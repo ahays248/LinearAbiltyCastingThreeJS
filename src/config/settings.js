@@ -1728,29 +1728,36 @@ export const settings = {
     range: 22.0,
     minRange: 2.0,
     /**
-     * Long sky-reach summon. The cast clip is stretched to this length
-     * (`castFitCharge`) so the body stays reaching up while the spear forms
-     * overhead and is held long enough to read as a weapon before the throw.
+     * Long sky-reach summon. Body leans back / looks up for the whole
+     * `charge` (see App + `skyReach`); the Mixamo clip is only a light accent
+     * at normal speed — stretching a forward punch over 1.5s looked wrong.
      */
     charge: 1.55,
-    castFitCharge: true, // stretch castAnim duration to match `charge`
+    castFitCharge: false,
+    skyReach: true, // lean-back hold instead of forward punch lunge
+    skyReachLean: -0.55, // radians; negative = look up
+    skyReachRecoil: 0.04,
     chargeShake: 0.035,
     /**
      * Summon timeline as fractions of `charge` (0..1):
-     *   0 → summonGrow     spear materialises high above (grow 0→1)
-     *   summonGrow → summonHold   full spear held in the sky (the readable beat)
-     *   summonHold → 1     lowers into the hands and tips onto the aim line
+     *   0 → summonGrow     spear materialises in raised hands (grow 0→1)
+     *   summonGrow → summonHold   full spear held overhead (readable beat)
+     *   summonHold → 1     drops into throw grip along the aim line
+     *
+     * The spear sits in **raised hands above the head**, slightly forward —
+     * not dropped through the skull from a sky tip.
      */
-    summonGrow: 0.22,
+    summonGrow: 0.2,
     summonHold: 0.72,
-    summonHeight: 3.35, // tip height while held in the sky, metres
-    summonForward: 0.15, // slight lean toward aim while overhead
+    /** Grip height of the butt while reaching up (above head for a 1.78m rig). */
+    summonGripHeight: 2.2,
+    summonForward: 0.42, // in front of the face, not through the body
     summonSide: 0.0,
     speed: 95.0, // spear tip travel once released, metres/second
     lifetime: 1.8, // seconds spear + skybolt + pillar hold after impact
     fadeTime: 0.75, // seconds they collapse
     cooldown: 1.8, // room for the long summon before re-cast
-    castAnim: 'cast1', // two-hand raise — reads as reaching up for the spear
+    castAnim: 'cast3', // lighter accent; body lean sells the sky-reach
 
     /* --- where the spear leaves the caster (throw grip at end of summon) --- */
     handHeight: 1.42,
@@ -1760,7 +1767,7 @@ export const settings = {
     sag: 0.04, // almost straight — a thrown spear, not a sagging beam
 
     /* --- solid summoned spear (mesh projectile, not a beam ribbon) --- */
-    spearLength: 2.15, // metres tip-to-butt
+    spearLength: 2.0, // metres tip-to-butt
     spearEmissive: 1.55, // body glow
     spearAura: 0.85, // soft shell around the metal
     spearMetalness: 0.72,

@@ -1571,7 +1571,9 @@ export class Editor {
     R(cast, c, 'range', 2, 60, 0.1, 'max range');
     R(cast, c, 'minRange', 0, 10, 0.1, 'min range');
     R(cast, c, 'charge', 0.2, 4, 0.01, 'summon length (sec)');
-    cast.add(c, 'castFitCharge').name('stretch cast to summon');
+    cast.add(c, 'skyReach').name('sky-reach lean (look up)');
+    R(cast, c, 'skyReachLean', -1.2, 0.2, 0.01, 'lean (neg = up)');
+    R(cast, c, 'skyReachRecoil', 0, 0.4, 0.005, 'sky-reach recoil');
     R(cast, c, 'chargeShake', 0, 0.3, 0.005, 'wind-up rumble');
     R(cast, c, 'speed', 5, 300, 1, 'spear speed');
     R(cast, c, 'lifetime', 0.05, 6, 0.01, 'hold lifetime');
@@ -1582,9 +1584,9 @@ export class Editor {
     const summon = folder.addFolder('Sky reach summon');
     R(summon, c, 'summonGrow', 0.05, 0.5, 0.01, 'grow phase (frac)');
     R(summon, c, 'summonHold', 0.3, 0.95, 0.01, 'hold ends (frac)');
-    R(summon, c, 'summonHeight', 1.5, 8, 0.05, 'tip height in sky');
-    R(summon, c, 'summonForward', -1, 2, 0.01, 'sky forward');
-    R(summon, c, 'summonSide', -1.5, 1.5, 0.01, 'sky lateral');
+    R(summon, c, 'summonGripHeight', 1.2, 3.5, 0.05, 'raised-hand height');
+    R(summon, c, 'summonForward', -0.2, 1.5, 0.01, 'in front of body');
+    R(summon, c, 'summonSide', -1.5, 1.5, 0.01, 'lateral');
 
     const anchor = folder.addFolder('Where it leaves the hand');
     R(anchor, c, 'handHeight', 0, 3, 0.01, 'hand height');

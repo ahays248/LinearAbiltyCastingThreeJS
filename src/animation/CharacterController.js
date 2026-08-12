@@ -69,6 +69,12 @@ export class CharacterController {
     this._forwardYaw = 0;
     /** 0..1 lunge envelope, decays on its own after `castLunge()`. */
     this._lunge = 0;
+    /** Seconds to hold full lean before the settle decay (sky-reach summons). */
+    this._lungeHoldRemaining = 0;
+    /** Per-cast lean (radians about body right). Negative = lean back / look up. */
+    this._lungeLean = 0;
+    /** Per-cast shove along body forward, metres. */
+    this._lungeRecoil = 0;
     this._rightAxis = new Vector3(1, 0, 0);
   }
 
@@ -338,34 +344,52 @@ export class CharacterController {
   }
 
   /**
-   * Punch the body forward, then let it settle.
+   * Accent laid over the cast clip: pitch about the body's right axis plus a
+   * shove along its forward, on a decaying envelope. Applied to `tilt` so it
+   * composes with heading.
    *
-   * An accent laid over the cast clip rather than a substitute for it: a pitch
-   * about the body's own right axis plus a shove back along its forward axis,
-   * both riding on one decaying envelope. Applied to `tilt` rather than `root`
-   * so it composes with the heading instead of fighting it, and turned off by
-   * dropping `castLean` and `castRecoil` to zero when the clip says it all.
+   * @param {object} [options]
+   * @param {number} [options.lean]     radians; default `character.castLean`.
+   *   Positive pitches forward (punch). **Negative leans back / looks up**
+   *   (sky-reach summon).
+   * @param {number} [options.recoil]   metres along body forward
+   * @param {number} [options.holdFor]  seconds to hold full lean before settle
+   *   (keeps a sky-reach pose for the whole summon, not one punch frame)
    */
-  castLunge() {
+  castLunge(options = {}) {
+    const c = settings.character;
     this._lunge = 1;
+    this._lungeLean = options.lean ?? c.castLean;
+    this._lungeRecoil = options.recoil ?? c.castRecoil;
+    this._lungeHoldRemaining = Math.max(0, options.holdFor ?? 0);
   }
 
   _applyLunge(dt) {
     const c = settings.character;
-    if (this._lunge > 0) {
+    // Hold full lean for long summons (Holy Lance sky-reach), then settle.
+    if (this._lungeHoldRemaining > 0) {
+      this._lungeHoldRemaining = Math.max(0, this._lungeHoldRemaining - dt);
+      this._lunge = 1;
+    } else if (this._lunge > 0) {
       this._lunge = Math.max(0, this._lunge - c.castSettle * dt);
     }
     // A short overshoot at the front of the envelope reads as a snap rather than
-    // a slow bow.
-    const envelope = this._lunge * this._lunge * (1 + 0.35 * Math.sin(this._lunge * Math.PI));
-    this.tilt.quaternion.setFromAxisAngle(this._rightAxis, envelope * c.castLean);
-    this.tilt.position.copy(this.forwardAxis).multiplyScalar(-envelope * c.castRecoil);
+    // a slow bow. While holding, keep a flat envelope of 1 so the pose is steady.
+    const envelope =
+      this._lungeHoldRemaining > 0
+        ? 1
+        : this._lunge * this._lunge * (1 + 0.35 * Math.sin(this._lunge * Math.PI));
+    this.tilt.quaternion.setFromAxisAngle(this._rightAxis, envelope * this._lungeLean);
+    this.tilt.position.copy(this.forwardAxis).multiplyScalar(-envelope * this._lungeRecoil);
   }
 
   /** Put the character back on the floor, upright and facing where it was. */
   resetPlacement() {
     this.root.position.y = 0;
     this._lunge = 0;
+    this._lungeHoldRemaining = 0;
+    this._lungeLean = settings.character.castLean;
+    this._lungeRecoil = settings.character.castRecoil;
     this.tilt.quaternion.identity();
     this.tilt.position.set(0, 0, 0);
   }

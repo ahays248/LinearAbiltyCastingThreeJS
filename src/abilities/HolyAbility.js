@@ -634,7 +634,11 @@ export class HolyAbility extends Ability {
   }
 
   /**
-   * Sky-reach summon pose.
+   * Sky-reach summon pose — spear in **raised hands**, not dropped on the skull.
+   *
+   * Grip (butt) sits above the head and slightly forward; tip points up so the
+   * shaft is a readable lance the caster is receiving from the sky. Last beat
+   * lowers into the throw grip along the aim line.
    *
    * @param {number} chargeT 0..1 through `charge`
    * @param {Vector3} outTip
@@ -646,31 +650,31 @@ export class HolyAbility extends Ability {
     const t = saturate(chargeT);
     const growEnd = Math.max(0.05, Math.min(0.9, c.summonGrow));
     const holdEnd = Math.max(growEnd + 0.05, Math.min(0.98, c.summonHold));
-
-    // Grow quickly at the start, then sit at full size for the long hold.
     const grow = t < growEnd ? Easing.outCubic(t / growEnd) : 1;
+    const len = Math.max(0.2, c.spearLength) * Math.max(0.05, grow);
 
-    // Overhead: tip high, shaft mostly vertical (player reaches up to it).
-    this._skySummonTip(_skyOrigin);
-    // Slight idle sway so a long hold does not look frozen.
-    const sway = Math.sin(this.age * 2.1) * 0.06;
+    // Raised-hand grip: above head, in front of the face (not through the body).
+    this._skySummonGrip(_skyOrigin);
+    const sway = Math.sin(this.age * 2.1) * 0.05;
     _skyOrigin.x += this.side.x * sway;
     _skyOrigin.z += this.side.z * sway;
+
+    // Tip is above the grip while held (vertical receive).
+    _dir.set(0, 1, 0).addScaledVector(this.direction, 0.08).normalize();
+    outTip.copy(_skyOrigin).addScaledVector(_dir, len);
 
     // Throw grip: tip just past the hands along the aim.
     this._handPoint(_target);
     _target.addScaledVector(this.direction, c.spearLength * 0.4);
 
-    // Last beat: pull from sky into the hands and tip onto the aim line.
     let blend = 0;
     if (t > holdEnd) {
       blend = Easing.inOutCubic(saturate((t - holdEnd) / Math.max(0.02, 1 - holdEnd)));
     }
 
-    outTip.lerpVectors(_skyOrigin, _target, blend);
+    outTip.lerpVectors(outTip, _target, blend);
 
-    // Vertical while held; rotate forward onto the aim as it drops into the hands.
-    _dir.set(0, 1, 0).addScaledVector(this.direction, 0.12).normalize();
+    // Vertical while held; rotate onto the aim as it drops into the throw.
     outHeading.lerpVectors(_dir, this.direction, blend);
     if (outHeading.lengthSq() < 1e-8) outHeading.set(0, 1, 0);
     else outHeading.normalize();
@@ -678,13 +682,13 @@ export class HolyAbility extends Ability {
     return grow;
   }
 
-  /** Tip position while the spear is held above the caster. */
-  _skySummonTip(out) {
+  /** Butt / grip while the caster reaches up — above the head, slightly forward. */
+  _skySummonGrip(out) {
     const c = settings.holy;
     out.copy(this.origin);
     out.addScaledVector(this.direction, c.summonForward);
     out.addScaledVector(this.side, c.summonSide);
-    out.y = c.summonHeight;
+    out.y = c.summonGripHeight;
     return out;
   }
 
@@ -707,9 +711,9 @@ export class HolyAbility extends Ability {
     const g = settings.global;
     if (grow < 0.08) return;
 
-    // Emit around the spear (overhead for most of the summon).
+    // Emit around the raised grip / mid-shaft (not the sky tip alone).
     _pos.copy(this.spearRoot.position);
-    _pos.y += c.spearLength * grow * 0.5;
+    _pos.y += c.spearLength * grow * 0.45;
 
     const holdBoost = chargeT > c.summonGrow && chargeT < c.summonHold ? 1.35 : 1;
     const moteCount = Math.round(

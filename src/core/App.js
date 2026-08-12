@@ -212,15 +212,25 @@ export class App {
     this.abilities.cast(origin, direction, distance, element);
     this.cooldowns.set(element, Math.max(0, settings[element].cooldown));
 
-    // Snap onto the shot and throw the body into it. Which clip that is belongs
-    // to the ability, so each spell can be cast with its own gesture. Long
-    // summons (Holy Lance) stretch the clip to `charge` so the body reaches up
-    // for the whole hold, not just the first half-second of the FBX.
+    // Snap onto the shot and throw the body into it. Which clip / lean that is
+    // belongs to the ability. Holy Lance does **not** stretch a forward-punch
+    // clip over the whole summon (that looked like punching the air while a
+    // spear fell on his head) — it leans back / looks up for `charge` seconds
+    // and only plays a light cast accent.
     this.character.setFacing(this.aim.facing);
     const castCfg = settings[element] ?? {};
     const fitDuration = castCfg.castFitCharge ? castCfg.charge : undefined;
     this.character.playCast(castCfg.castAnim, { fitDuration });
-    this.character.castLunge();
+
+    if (castCfg.skyReach) {
+      this.character.castLunge({
+        lean: castCfg.skyReachLean ?? -0.52,
+        recoil: castCfg.skyReachRecoil ?? 0.04,
+        holdFor: Math.max(0, castCfg.charge ?? 0)
+      });
+    } else {
+      this.character.castLunge();
+    }
   }
 
   clearEffects() {
