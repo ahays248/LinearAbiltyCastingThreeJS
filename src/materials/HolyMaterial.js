@@ -15,7 +15,8 @@ import { getColor } from '../utils/color.js';
 export const HolyPass = Object.freeze({
   SPEAR_CORE: 0,
   SPEAR_GLOW: 1,
-  RAY: 2
+  RAY: 2,
+  SKY: 3
 });
 
 /**
@@ -576,6 +577,338 @@ export function createHolyRayMaterial(glow = false) {
     u.uColorInner.value.copy(getColor(c.colorInner));
     u.uColorOuter.value.copy(getColor(c.colorOuter));
     u.uColorHalo.value.copy(getColor(c.colorHalo));
+  };
+
+  return material;
+}
+
+/**
+ * SKYBOLT — a judgment strike from the sky onto the impact point.
+ *
+ * Same ribbon rule as Storm Lance (piecewise-linear kinks, camera-facing),
+ * but the axis is *vertical*: `uOrigin` is high above the target and
+ * `uTarget` is the ground hit. `uProgress` grows from sky toward floor so the
+ * bolt *comes down*. Every metre is live from `settings.holy`.
+ */
+const SKY_VERTEX = /* glsl */ `
+  #define PI  3.141592653589793
+  #define TAU 6.283185307179586
+
+  uniform float uTime;
+  uniform vec3  uOrigin;
+  uniform vec3  uTarget;
+  uniform vec3  uSide;
+  uniform float uSeed;
+  uniform float uRestrike;
+
+  uniform float uStrands;
+  uniform float uSpread;
+  uniform float uSpreadNear;
+  uniform float uSpreadCurve;
+  uniform float uTwist;
+  uniform float uTwistSpeed;
+
+  uniform float uJitter;
+  uniform float uJitterScale;
+  uniform float uOctaves;
+  uniform float uJitterFalloff;
+  uniform float uCrawl;
+  uniform float uPinch;
+  uniform float uConverge;
+
+  uniform float uWidth;
+  uniform float uWidthTip;
+  uniform float uWidthCurve;
+  uniform float uCoreWidth;
+  uniform float uWidthScale;
+  uniform float uStrandFlash;
+  uniform float uFlickerSpeed;
+  uniform float uFade;
+
+  attribute float aStrand;
+
+  varying float vT;
+  varying float vSide;
+  varying float vStrand;
+  varying float vFlash;
+  varying float vViewZ;
+
+  ${noiseGLSL}
+
+  float vnoise(float x, float seed) {
+    float i = floor(x);
+    float f = x - i;
+    return mix(hash11(i + seed), hash11(i + 1.0 + seed), f) * 2.0 - 1.0;
+  }
+
+  vec2 kink(float t, float seed, float span) {
+    vec2 o = vec2(0.0);
+    float amp = 1.0;
+    float freq = max(uJitterScale, 0.01) * span;
+    float scroll = uTime * uCrawl;
+    for (int i = 0; i < 5; i++) {
+      float on = step(float(i), uOctaves - 1.0);
+      o.x += on * amp * vnoise(t * freq + scroll, seed + 13.0 * float(i));
+      o.y += on * amp * vnoise(t * freq + scroll * 1.17, seed + 71.3 + 13.0 * float(i));
+      amp *= uJitterFalloff;
+      freq *= 2.0;
+      scroll *= 1.63;
+    }
+    return o;
+  }
+
+  vec3 boltPoint(float t, float seed, float radial, vec3 n1, vec3 n2, float span) {
+    vec3 axis = mix(uOrigin, uTarget, t);
+
+    float pinch = max(uPinch, 1e-3);
+    float ends = smoothstep(0.0, pinch, t) *
+                 mix(1.0, smoothstep(0.0, pinch, 1.0 - t), clamp(uConverge, 0.0, 1.0));
+
+    vec2 offset = kink(t, seed, span) * uJitter * ends;
+
+    float angle = seed * TAU + (t * uTwist + uTime * uTwistSpeed) * TAU;
+    float reach = mix(uSpreadNear, uSpread, pow(clamp(t, 0.0, 1.0), max(uSpreadCurve, 0.01)));
+    offset += vec2(cos(angle), sin(angle)) * reach * radial;
+
+    return axis + n1 * offset.x + n2 * offset.y;
+  }
+
+  void main() {
+    float t = position.x;
+    float side = position.y;
+    vT = t;
+    vSide = side;
+
+    vec3 delta = uTarget - uOrigin;
+    float span = max(length(delta), 0.01);
+    vec3 dir = delta / span;
+    vec3 n1 = uSide - dir * dot(uSide, dir);
+    n1 = length(n1) > 1e-4 ? normalize(n1) : normalize(cross(dir, vec3(1.0, 0.0, 0.0)));
+    vec3 n2 = normalize(cross(dir, n1));
+
+    float strike = floor(uTime * max(uRestrike, 0.01));
+    float seed = hash11(aStrand * 7.13 + uSeed + strike * 3.77) * 97.0;
+    float radial = uStrands <= 1.0 ? 0.0 : aStrand / (uStrands - 1.0);
+    vStrand = radial;
+
+    vec3 here = boltPoint(t, seed, radial, n1, n2, span);
+
+    float step_ = 0.02;
+    float ahead = t + step_;
+    float flip = 1.0;
+    if (ahead > 1.0) { ahead = t - step_; flip = -1.0; }
+    vec3 next = boltPoint(ahead, seed, radial, n1, n2, span);
+    vec3 tangent = (next - here) * flip;
+    tangent = length(tangent) > 1e-5 ? normalize(tangent) : dir;
+
+    vec3 toCamera = normalize(cameraPosition - here);
+    vec3 binormal = cross(tangent, toCamera);
+    float bl = length(binormal);
+    binormal = bl > 1e-4 ? binormal / bl : n1;
+
+    float flash = mix(1.0, hash11(floor(uTime * uFlickerSpeed) + aStrand * 3.7 + uSeed), uStrandFlash);
+    vFlash = flash;
+
+    float halfWidth = uWidth * uWidthScale;
+    halfWidth *= mix(1.0, uWidthTip, pow(clamp(t, 0.0, 1.0), max(uWidthCurve, 0.01)));
+    halfWidth *= mix(uCoreWidth, 1.0, radial);
+    halfWidth *= flash * uFade;
+
+    vec4 mv = viewMatrix * vec4(here + binormal * side * halfWidth, 1.0);
+    vViewZ = mv.z;
+    gl_Position = projectionMatrix * mv;
+  }
+`;
+
+const SKY_FRAGMENT = /* glsl */ `
+  uniform float uTime;
+  uniform float uSeed;
+  uniform float uProgress;
+  uniform float uTipGlow;
+  uniform float uTipLength;
+  uniform float uCoreSharp;
+  uniform float uGlowFalloff;
+  uniform float uBranchDim;
+  uniform float uFlicker;
+  uniform float uFlickerSpeed;
+  uniform float uPassOpacity;
+  uniform float uOpacity;
+  uniform float uGlow;
+  uniform float uFade;
+  uniform float uSoftFade;
+  uniform vec3  uColorCore;
+  uniform vec3  uColorInner;
+  uniform vec3  uColorOuter;
+  uniform vec3  uColorHalo;
+
+  uniform float uGlobalGlow;
+  uniform vec2  uResolution;
+  uniform sampler2D uSceneDepth;
+  uniform float uCameraNear;
+  uniform float uCameraFar;
+
+  varying float vT;
+  varying float vSide;
+  varying float vStrand;
+  varying float vFlash;
+  varying float vViewZ;
+
+  ${noiseGLSL}
+  ${commonGLSL}
+
+  void main() {
+    // Progress grows sky → ground, so the leading edge is the *strike front*.
+    float tip = max(uTipLength, 1e-3);
+    float drawn = smoothstep(uProgress, uProgress - tip, vT);
+    if (drawn <= 0.002) discard;
+
+    float v = clamp(abs(vSide), 0.0, 1.0);
+
+    #ifdef HOLY_GLOW
+      float profile = pow(1.0 - v, max(uGlowFalloff, 0.05));
+      vec3 color = mix(uColorHalo, uColorOuter, profile);
+      float alpha = profile;
+    #else
+      float profile = pow(1.0 - v, max(uCoreSharp, 0.05));
+      vec3 color = mix(uColorOuter, uColorInner, smoothstep(0.0, 0.5, profile));
+      color = mix(color, uColorCore, smoothstep(0.45, 1.0, profile));
+      float alpha = profile;
+    #endif
+
+    color += uColorCore * smoothstep(uProgress - tip * 2.0, uProgress, vT) * uTipGlow;
+
+    float flicker = 1.0 - uFlicker * hash11(floor(uTime * uFlickerSpeed) + uSeed);
+
+    alpha *= drawn * flicker * vFlash * uFade * uPassOpacity * uOpacity;
+    alpha *= mix(1.0, clamp(uBranchDim, 0.0, 1.0), vStrand);
+
+    vec2 screenUV = gl_FragCoord.xy / uResolution;
+    alpha *= softFade(uSceneDepth, screenUV, vViewZ, uCameraNear, uCameraFar, uSoftFade);
+    if (alpha < 0.003) discard;
+
+    color *= uGlow * uGlobalGlow;
+    gl_FragColor = vec4(color, alpha);
+  }
+`;
+
+/**
+ * @param {boolean} glow  wide halo pass when true
+ */
+export function createHolySkyboltMaterial(glow = false) {
+  const material = new ShaderMaterial({
+    defines: glow ? { HOLY_GLOW: '' } : {},
+    transparent: true,
+    depthWrite: false,
+    depthTest: true,
+    blending: AdditiveBlending,
+    side: DoubleSide,
+    toneMapped: false,
+    uniforms: sharedUniforms({
+      uOrigin: { value: new Vector3() },
+      uTarget: { value: new Vector3(0, 0, 0) },
+      uSide: { value: new Vector3(1, 0, 0) },
+      uSeed: { value: 0 },
+      uRestrike: { value: 18 },
+      uProgress: { value: 0 },
+      uFade: { value: 1 },
+
+      uStrands: { value: 12 },
+      uSpread: { value: 1.8 },
+      uSpreadNear: { value: 0.35 },
+      uSpreadCurve: { value: 0.7 },
+      uTwist: { value: 0.55 },
+      uTwistSpeed: { value: 1.1 },
+      uBranchDim: { value: 0.55 },
+
+      uJitter: { value: 0.85 },
+      uJitterScale: { value: 0.55 },
+      uOctaves: { value: 4 },
+      uJitterFalloff: { value: 0.52 },
+      uCrawl: { value: 4.5 },
+      uPinch: { value: 0.08 },
+      uConverge: { value: 1.0 },
+
+      uWidth: { value: 0.12 },
+      uWidthTip: { value: 0.55 },
+      uWidthCurve: { value: 0.9 },
+      uCoreWidth: { value: 1.8 },
+      uCoreSharp: { value: 3.2 },
+      uGlowFalloff: { value: 1.9 },
+      uWidthScale: { value: glow ? 9 : 1 },
+      uPassOpacity: { value: glow ? 0.42 : 1 },
+      uSoftFade: { value: 0.8 },
+
+      uFlicker: { value: 0.35 },
+      uFlickerSpeed: { value: 28 },
+      uStrandFlash: { value: 0.45 },
+      uTipGlow: { value: 2.8 },
+      uTipLength: { value: 0.07 },
+
+      uOpacity: { value: 1 },
+      uGlow: { value: 3.2 },
+      uColorCore: { value: new Color(1, 1, 1) },
+      uColorInner: { value: new Color(1, 0.95, 0.75) },
+      uColorOuter: { value: new Color(0.7, 0.85, 1) },
+      uColorHalo: { value: new Color(0.35, 0.45, 1) }
+    }),
+    vertexShader: SKY_VERTEX,
+    fragmentShader: SKY_FRAGMENT
+  });
+
+  /**
+   * @param {object} state { origin, target, side, progress, fade, seed, strands }
+   */
+  material.userData.syncSky = (state) => {
+    const c = settings.holy;
+    const g = settings.global;
+    const u = material.uniforms;
+
+    u.uOrigin.value.copy(state.origin);
+    u.uTarget.value.copy(state.target);
+    u.uSide.value.copy(state.side);
+    u.uSeed.value = state.seed;
+    u.uProgress.value = state.progress;
+    u.uFade.value = state.fade;
+    u.uStrands.value = state.strands;
+
+    u.uRestrike.value = c.skyRestrike;
+    u.uSpread.value = c.skySpread;
+    u.uSpreadNear.value = c.skySpreadNear;
+    u.uSpreadCurve.value = c.skySpreadCurve;
+    u.uTwist.value = c.skyTwist;
+    u.uTwistSpeed.value = c.skyTwistSpeed;
+    u.uBranchDim.value = c.skyBranchDim;
+
+    u.uJitter.value = c.skyJitter;
+    u.uJitterScale.value = c.skyJitterScale;
+    u.uOctaves.value = c.skyOctaves;
+    u.uJitterFalloff.value = c.skyJitterFalloff;
+    u.uCrawl.value = c.skyCrawl;
+    u.uPinch.value = c.skyPinch;
+    u.uConverge.value = c.skyConverge;
+
+    u.uWidth.value = c.skyWidth;
+    u.uWidthTip.value = c.skyWidthTip;
+    u.uWidthCurve.value = c.skyWidthCurve;
+    u.uCoreWidth.value = c.skyCoreWidth;
+    u.uCoreSharp.value = c.skyCoreSharp;
+    u.uGlowFalloff.value = c.skyGlowFalloff;
+    u.uWidthScale.value = glow ? c.skyGlowWidth : 1;
+    u.uPassOpacity.value = glow ? c.skyGlowOpacity : 1;
+    u.uSoftFade.value = c.softFade;
+
+    u.uFlicker.value = c.skyFlicker;
+    u.uFlickerSpeed.value = c.skyFlickerSpeed;
+    u.uStrandFlash.value = c.skyStrandFlash;
+    u.uTipGlow.value = c.skyTipGlow;
+    u.uTipLength.value = c.skyTipLength;
+
+    u.uOpacity.value = c.opacity * g.opacity;
+    u.uGlow.value = c.skyGlow * g.glow;
+    u.uColorCore.value.copy(getColor(c.colorSkyCore));
+    u.uColorInner.value.copy(getColor(c.colorSkyInner));
+    u.uColorOuter.value.copy(getColor(c.colorSkyOuter));
+    u.uColorHalo.value.copy(getColor(c.colorSkyHalo));
   };
 
   return material;

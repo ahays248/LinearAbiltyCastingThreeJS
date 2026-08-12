@@ -3,6 +3,7 @@ import { Ability, AbilityPhase } from './Ability.js';
 import {
   createHolyMaterial,
   createHolyRayMaterial,
+  createHolySkyboltMaterial,
   HolyPass
 } from '../materials/HolyMaterial.js';
 import { createBoltRibbonGeometry } from '../assets/ProceduralGeometry.js';
@@ -22,32 +23,36 @@ const MAX_STRANDS = 8;
 const NODES = 64;
 /** Ceiling on god-rays at the impact pillar. */
 const MAX_RAYS = 16;
+/** Ceiling on skybolt filaments — big judgment strike. */
+const MAX_SKY_STRANDS = 24;
+const SKY_NODES = 80;
 const SPARK_BATCHES = 5;
 
 const _emit = {};
 const _pos = new Vector3();
 const _dir = new Vector3();
 const _target = new Vector3();
+const _skyOrigin = new Vector3();
 
 /**
- * HOLY LANCE — a clean gold-white skillshot that plants a pillar of light.
+ * HOLY LANCE — a clean gold-white skillshot that calls a sky judgment.
  *
  * Beat map:
  *
  *   1. **travel** — a smooth spear leaves the hand and races along the aim
  *      line. Soft motes trail it; pale brands kiss the floor under the tip.
- *   2. **impact** — the spear holds a breath at the far end while a vertical
- *      cluster of god-rays rises from the hit point. Shock rings and glitter
- *      open on the floor; this is the opposite of a scorch.
- *   3. **fade** — spear and pillar collapse together into a thread of light.
+ *   2. **impact** — a *large* kinked lightning bolt crashes from the sky onto
+ *      the hit point (Glacial Crown scale), while soft god-rays open around
+ *      the landing. Shock rings, electric brands and glitter tear open on the
+ *      floor.
+ *   3. **fade** — spear, skybolt and pillar collapse into a thread of light.
  *
- * Distinct from Nova Beam (sustained *horizontal* column that holds after a
- * charge) and Storm Lance (kinked electric ribbon). This cast is a *weapon*
- * that arrives, then answers with a *vertical* answer.
+ * Distinct from Nova Beam (sustained horizontal column) and Storm Lance
+ * (horizontal hand bolt). The skybolt is Storm Lance's ribbon language stood
+ * vertical and scaled for a monument-sized answer.
  *
- * **Editor rule.** A cast captures one seed. Every metre, radian and second is
- * resolved against `settings.holy` each frame — including zero-length frames
- * while paused — so the spear and pillar reshape under the sliders mid-cast.
+ * **Editor rule.** A cast captures one seed. Every metre is resolved against
+ * `settings.holy` each frame — including zero-length frames while paused.
  */
 export class HolyAbility extends Ability {
   constructor(context) {
@@ -61,6 +66,7 @@ export class HolyAbility extends Ability {
   createShaders() {
     this.spearGeometry = createBoltRibbonGeometry(NODES, MAX_STRANDS);
     this.rayGeometry = createBoltRibbonGeometry(NODES, MAX_RAYS);
+    this.skyGeometry = createBoltRibbonGeometry(SKY_NODES, MAX_SKY_STRANDS);
 
     this.spearCore = createHolyMaterial(HolyPass.SPEAR_CORE);
     this.spearGlow = createHolyMaterial(HolyPass.SPEAR_GLOW);
@@ -69,6 +75,10 @@ export class HolyAbility extends Ability {
     this.rayGlow = createHolyRayMaterial(true);
     this.rayCore = createHolyRayMaterial(false);
     this.rayMaterials = [this.rayGlow, this.rayCore];
+
+    this.skyGlow = createHolySkyboltMaterial(true);
+    this.skyCore = createHolySkyboltMaterial(false);
+    this.skyMaterials = [this.skyGlow, this.skyCore];
 
     this.spearMeshes = [];
     for (const [index, material] of this.spearMaterials.entries()) {
@@ -93,11 +103,25 @@ export class HolyAbility extends Ability {
       this.rayMeshes.push(mesh);
     }
 
+    this.skyMeshes = [];
+    for (const [index, material] of this.skyMaterials.entries()) {
+      const mesh = new Mesh(this.skyGeometry, material);
+      mesh.frustumCulled = false;
+      mesh.matrixAutoUpdate = false;
+      mesh.layers.set(LAYER.VFX);
+      mesh.renderOrder = 16 + index;
+      mesh.visible = false;
+      this.group.add(mesh);
+      this.skyMeshes.push(mesh);
+    }
+
     this._seed = 0;
     this._strandCount = 1;
     this._rayCount = 1;
+    this._skyCount = 1;
     this._brandDistance = 0;
     this._pillarReveal = 0;
+    this._skyProgress = 0;
 
     this._state = {
       origin: new Vector3(),
@@ -174,6 +198,7 @@ export class HolyAbility extends Ability {
     this.moteEmitter = new RateEmitter();
     this.glitterEmitter = new RateEmitter();
     this.hazeEmitter = new RateEmitter();
+    this.skySparkEmitter = new RateEmitter();
   }
 
   /* ------------------------------------------------------------------ */
@@ -181,7 +206,11 @@ export class HolyAbility extends Ability {
   /* ------------------------------------------------------------------ */
 
   get instanceCount() {
-    return this._strandCount * this.spearMeshes.length + this._rayCount * this.rayMeshes.length;
+    return (
+      this._strandCount * this.spearMeshes.length +
+      this._rayCount * this.rayMeshes.length +
+      this._skyCount * this.skyMeshes.length
+    );
   }
 
   get impactDuration() {
@@ -242,14 +271,31 @@ export class HolyAbility extends Ability {
     this.moteEmitter.reset();
     this.glitterEmitter.reset();
     this.hazeEmitter.reset();
+    this.skySparkEmitter.reset();
     this._brandDistance = 0;
     this._pillarReveal = 0;
+    this._skyProgress = 0;
     this._seed = Math.random() * 100;
 
     for (const mesh of this.rayMeshes) mesh.visible = false;
+    for (const mesh of this.skyMeshes) mesh.visible = false;
 
     this._syncUniforms(1);
     this._muzzleFx();
+  }
+
+  /** Sky entry point above the impact — live height from settings. */
+  _skyPoint(out) {
+    this.pointAt(1, out);
+    out.y = settings.holy.skyHeight;
+    return out;
+  }
+
+  /** Ground contact under the skybolt. */
+  _skyGround(out) {
+    this.pointAt(1, out);
+    out.y = settings.holy.skyEndHeight;
+    return out;
   }
 
   /* ------------------------------------------------------------------ */
@@ -280,6 +326,20 @@ export class HolyAbility extends Ability {
     this.rayGeometry.instanceCount = this._rayCount;
     this._impactPoint(state.origin);
     for (const material of this.rayMaterials) material.userData.syncRay(state);
+
+    /* skybolt — origin high, target on the floor; progress sky → ground */
+    this._skyCount = Math.max(1, Math.min(MAX_SKY_STRANDS, Math.round(c.skyStrands)));
+    this.skyGeometry.instanceCount = this._skyCount;
+    this._skyPoint(_skyOrigin);
+    this._skyGround(_target);
+    state.origin.copy(_skyOrigin);
+    state.target.copy(_target);
+    state.side.copy(this.side);
+    state.progress = this._skyProgress;
+    state.fade = fade;
+    state.seed = this._seed + 17.3;
+    state.strands = this._skyCount;
+    for (const material of this.skyMaterials) material.userData.syncSky(state);
 
     /* particles */
     this.sparks.setGradient(
@@ -539,6 +599,7 @@ export class HolyAbility extends Ability {
 
   onTravel(dt) {
     this._pillarReveal = 0;
+    this._skyProgress = 0;
     this._syncUniforms(1);
     this._axisPoint(this.u, this.position);
     this._spearFx(dt, 1);
@@ -553,11 +614,28 @@ export class HolyAbility extends Ability {
 
     this._impactPoint(_pos);
     for (const mesh of this.rayMeshes) mesh.visible = true;
+    for (const mesh of this.skyMeshes) mesh.visible = true;
+    this._skyProgress = 0;
+
+    // Storm shell + air shell stacked for a monument-sized hit.
+    this.ctx.bursts.spawn(BurstMode.STORM, _pos, {
+      radius: c.burstSize * 0.25,
+      endRadius: c.burstSize * 1.35 * g.explosionIntensity,
+      life: 0.95,
+      intensity: c.burstIntensity * 1.25,
+      opacity: 0.95,
+      fresnel: 1.7,
+      displace: 0.7,
+      squash: 0.7,
+      colorA: getColor(c.colorSkyBurstA),
+      colorB: getColor(c.colorSkyBurstB),
+      colorC: getColor(c.colorSkyBurstC)
+    });
 
     this.ctx.bursts.spawn(BurstMode.AIR, _pos, {
       radius: c.burstSize * 0.2,
       endRadius: c.burstSize * g.explosionIntensity,
-      life: 0.75,
+      life: 0.8,
       intensity: c.burstIntensity,
       opacity: 0.9,
       fresnel: 1.9,
@@ -571,42 +649,70 @@ export class HolyAbility extends Ability {
     this.pointAt(1, _target);
     this.ctx.decals.spawn(DecalType.SHOCKWAVE, _target, {
       radius: c.shockRadius * g.explosionIntensity,
-      life: 0.7,
-      width: 0.04,
-      intensity: 1.0,
+      life: 0.9,
+      width: 0.05,
+      intensity: 1.15,
       colorA: getColor(c.colorShockA),
       colorB: getColor(c.colorShockB)
     });
 
+    // Second wider ring — Glacial Crown footprint scale.
+    this.ctx.decals.spawn(DecalType.SHOCKWAVE, _target, {
+      radius: c.shockRadius * 1.55 * g.explosionIntensity,
+      life: 1.1,
+      width: 0.035,
+      intensity: 0.75,
+      colorA: getColor(c.colorSkyOuter),
+      colorB: getColor(c.colorSkyCore)
+    });
+
     this.ctx.decals.spawn(DecalType.FROST, _target, {
-      radius: c.brandRadius * 2.8,
-      life: c.brandLife * 1.5,
-      intensity: c.brandIntensity * 1.3,
+      radius: c.brandRadius * 3.2,
+      life: c.brandLife * 1.6,
+      intensity: c.brandIntensity * 1.4,
       colorA: getColor(c.colorBrandA),
       colorB: getColor(c.colorBrandB),
       height: 0.014
     });
 
     this.ctx.decals.spawn(DecalType.DUSTRING, _target, {
-      radius: c.brandRadius * 2.2,
+      radius: c.brandRadius * 2.6,
       life: c.brandLife,
-      intensity: c.brandIntensity * 0.7,
+      intensity: c.brandIntensity * 0.75,
       colorA: getColor(c.colorBrandB),
       colorB: getColor(c.colorBrandA),
       height: 0.012
     });
 
+    // Electric burn plate under the skybolt — reads as the strike grounding out.
+    this.ctx.decals.spawn(DecalType.ARC, _target, {
+      radius: c.skyArcRadius,
+      life: c.skyArcLife,
+      width: c.skyArcBranches,
+      intensity: c.skyArcIntensity,
+      colorA: getColor(c.colorSkyEmber),
+      colorB: getColor(c.colorSkyArc)
+    });
+    this.ctx.decals.spawn(DecalType.ARC, _target, {
+      radius: c.skyArcRadius * 1.7,
+      life: c.skyArcLife * 1.2,
+      width: c.skyArcBranches * 0.85,
+      intensity: c.skyArcIntensity * 0.7,
+      colorA: getColor(c.colorSkyEmber),
+      colorB: getColor(c.colorSkyArc)
+    });
+
     _emit.position = _pos;
-    _emit.radius = 0.35;
+    _emit.radius = Math.max(0.5, c.skySpread * 0.9);
     _emit.direction = _dir.set(0, 1, 0);
-    _emit.speed = c.glitterSpeed * 1.6;
-    _emit.speedVariance = 0.8;
+    _emit.speed = c.glitterSpeed * 2.0;
+    _emit.speedVariance = 0.85;
     _emit.spread = 1.0;
     _emit.inherit = null;
     _emit.anchor = null;
-    _emit.size = 0.12;
-    _emit.sizeVariance = 0.7;
-    _emit.life = c.glitterLifetime * 1.3;
+    _emit.size = 0.14;
+    _emit.sizeVariance = 0.75;
+    _emit.life = c.glitterLifetime * 1.4;
     _emit.lifeVariance = 0.55;
     _emit.spin = 0;
     _emit.tint = null;
@@ -615,13 +721,21 @@ export class HolyAbility extends Ability {
     this.sparks.emit(Math.round(c.burstSparks * g.particleCount), _emit);
     this.motes.emit(Math.round(c.burstMotes * g.particleCount), _emit);
 
+    // Extra radial spark burst when judgment lands.
+    _emit.direction = _dir.set(0, 0.35, 0).normalize();
+    _emit.speed = c.sparkSpeed * 2.4;
+    _emit.spread = 1.0;
+    _emit.size = 0.18;
+    _emit.life = c.sparkLifetime * 1.6;
+    this.sparks.emit(Math.round(c.skyBurstSparks * g.particleCount), _emit);
+
     this.ctx.shake.add(
       c.impactShake * g.explosionIntensity * g.cameraShake,
       1 / Math.max(0.1, c.shakeDuration),
-      22
+      28
     );
     this.ctx.flash.trigger(getColor(c.colorFlash), c.impactFlash * g.explosionIntensity);
-    this.lightBoost = c.lightIntensity * 1.4 * g.explosionIntensity;
+    this.lightBoost = c.lightIntensity * 2.2 * g.explosionIntensity;
   }
 
   onFade(dt, t) {
@@ -630,12 +744,16 @@ export class HolyAbility extends Ability {
     const hold = t <= 1;
     const fade = hold ? 1 : 1 - Easing.inCubic(saturate(t - 1));
 
-    // Pillar snaps open on outCubic, then holds with the spear.
     if (hold) {
       const snap = Math.max(0.02, c.pillarSnap);
       this._pillarReveal = Easing.outCubic(saturate(this.impactTime / snap));
+
+      // Skybolt crashes down fast, then holds full while restriking.
+      const strike = Math.max(0.02, c.skyStrikeTime);
+      this._skyProgress = Easing.outCubic(saturate(this.impactTime / strike));
     } else {
       this._pillarReveal = fade;
+      this._skyProgress = fade > 0.001 ? 1 : 0;
     }
 
     this._syncUniforms(fade);
@@ -643,31 +761,81 @@ export class HolyAbility extends Ability {
 
     this._spearFx(dt, fade * (hold ? 0.45 : 0.2));
     this._pillarFx(dt, fade * (hold ? 1 : 0.4));
+    this._skyFx(dt, fade * (hold ? 1 : 0.35));
 
     if (hold) {
       this.ctx.shake.rumble(c.holdShake * settings.global.cameraShake, dt);
     }
   }
 
+  /** Sparks and motes shed along the live skybolt while it stands. */
+  _skyFx(dt, scale) {
+    if (this._skyProgress < 0.08) return;
+    const c = settings.holy;
+    const g = settings.global;
+    const time = frame.uTime.value;
+
+    let sparkCount = Math.round(this.skySparkEmitter.tick(dt, c.skySparkRate * scale) * g.particleCount);
+    if (sparkCount > 0) {
+      _emit.direction = _dir.set(0, -0.2, 0).normalize();
+      _emit.speed = c.sparkSpeed * 1.4;
+      _emit.speedVariance = 0.9;
+      _emit.spread = 1.0;
+      _emit.inherit = null;
+      _emit.anchor = null;
+      _emit.size = 0.14;
+      _emit.sizeVariance = 0.7;
+      _emit.life = c.sparkLifetime;
+      _emit.lifeVariance = 0.5;
+      _emit.spin = 0;
+      _emit.tint = null;
+      _emit.time = time;
+
+      const batches = Math.min(sparkCount, SPARK_BATCHES);
+      const per = Math.ceil(sparkCount / batches);
+      while (sparkCount > 0) {
+        const s = randRange(0.05, Math.max(0.08, this._skyProgress));
+        // Point along sky → ground axis.
+        this._skyPoint(_skyOrigin);
+        this._skyGround(_target);
+        _pos.lerpVectors(_skyOrigin, _target, s);
+        _emit.position = _pos;
+        _emit.radius = lerp(c.skySpreadNear, c.skySpread, s) * 1.2 + 0.08;
+        this.sparks.emit(Math.min(per, sparkCount), _emit);
+        sparkCount -= per;
+      }
+    }
+  }
+
   onDestroy() {
     this._strandCount = 1;
     this._rayCount = 1;
+    this._skyCount = 1;
     this._pillarReveal = 0;
+    this._skyProgress = 0;
     this.spearGeometry.instanceCount = 1;
     this.rayGeometry.instanceCount = 1;
+    this.skyGeometry.instanceCount = 1;
     for (const material of this.spearMaterials) material.uniforms.uFade.value = 0;
     for (const material of this.rayMaterials) {
       material.uniforms.uFade.value = 0;
       material.uniforms.uReveal.value = 0;
     }
+    for (const material of this.skyMaterials) {
+      material.uniforms.uFade.value = 0;
+      material.uniforms.uProgress.value = 0;
+    }
     for (const mesh of this.rayMeshes) mesh.visible = false;
+    for (const mesh of this.skyMeshes) mesh.visible = false;
   }
 
   dispose() {
     this.spearGeometry.dispose();
     this.rayGeometry.dispose();
+    this.skyGeometry.dispose();
     for (const material of this.spearMaterials) material.dispose();
     for (const material of this.rayMaterials) material.dispose();
+    for (const material of this.skyMaterials) material.dispose();
     super.dispose();
   }
 }

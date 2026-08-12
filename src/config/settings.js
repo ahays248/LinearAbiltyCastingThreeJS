@@ -1715,9 +1715,10 @@ export const settings = {
   /* ------------------------------------------------------------------ */
   /**
    * Line cast. A smooth spear leaves the hand, brands the floor pale as it
-   * goes, and on impact opens a vertical cluster of god-rays. Not a sustained
-   * horizontal beam (see Nova Beam) and not a kinked discharge (see Storm
-   * Lance): a weapon that arrives, then answers with a vertical pillar.
+   * goes, and on impact a *monument-sized* lightning bolt crashes from the sky
+   * (Glacial Crown presence) while soft god-rays open around the landing.
+   * Not a sustained horizontal beam (Nova Beam) and not a hand-cast bolt
+   * (Storm Lance): a weapon that arrives, then answers with judgment from above.
    *
    * A cast captures one seed. Every metre is resolved from these values each
    * frame, including while paused.
@@ -1727,9 +1728,9 @@ export const settings = {
     range: 22.0,
     minRange: 2.0,
     speed: 78.0, // spear tip travel, metres/second
-    lifetime: 1.1, // seconds the spear + pillar hold after impact
-    fadeTime: 0.55, // seconds they collapse
-    cooldown: 0.7,
+    lifetime: 2.4, // seconds spear + skybolt + pillar hold after impact
+    fadeTime: 0.85, // seconds they collapse
+    cooldown: 1.1,
     castAnim: 'cast1',
 
     /* --- where the spear leaves the caster --- */
@@ -1780,31 +1781,86 @@ export const settings = {
 
     /* --- pale brands on the ground --- */
     brandRate: 1.1, // brands per metre of tip travel
-    brandRadius: 0.85,
-    brandLife: 2.8,
-    brandIntensity: 0.85,
+    brandRadius: 2.4, // impact plate — Glacial Crown footprint territory
+    brandLife: 4.0,
+    brandIntensity: 1.05,
     colorBrandA: '#fff0c4',
     colorBrandB: '#ffc86a',
-    shockRadius: 5.5,
+    shockRadius: 10.0, // outer ring ≈ glacier zone diameter
     colorShockA: '#ffe7a0',
     colorShockB: '#ffffff',
 
-    /* --- impact pillar (god-rays) --- */
-    pillarHeight: 7.5, // metres the rays climb
-    pillarRays: 8, // vertical beams (capped at 16)
-    pillarSpread: 0.55, // how far rays fan from the centre, metres
-    pillarSway: 0.16,
+    /* --- sky judgment (kinked bolt from above) --- */
+    /**
+     * The big read on impact. A multi-filament lightning column drops from
+     * `skyHeight` onto the hit point in `skyStrikeTime`, then holds and
+     * restrikes for the rest of `lifetime`. Scale matches Glacial Crown's
+     * "this owns the stage" presence: tall, wide, loud.
+     */
+    skyHeight: 24.0, // metres above the floor the bolt starts
+    skyEndHeight: 0.08, // contact height on the ground
+    skyStrikeTime: 0.14, // seconds the front takes to slam down
+    skyStrands: 14, // filaments (capped at 24)
+    skySpread: 2.2, // metres the bundle fans at the ground
+    skySpreadNear: 0.55, // fan high in the sky
+    skySpreadCurve: 0.65, // <1 opens early so the body is wide
+    skyTwist: 0.6,
+    skyTwistSpeed: 1.2,
+    skyBranchDim: 0.52,
+    skyJitter: 1.05, // kink amplitude, metres
+    skyJitterScale: 0.48, // kinks per metre of height
+    skyOctaves: 4,
+    skyJitterFalloff: 0.52,
+    skyCrawl: 5.0,
+    skyPinch: 0.06,
+    skyConverge: 1.0,
+    skyWidth: 0.14, // half-width of a filament high up
+    skyWidthTip: 0.7, // width at the ground, × base
+    skyWidthCurve: 0.75,
+    skyCoreWidth: 2.1,
+    skyCoreSharp: 3.0,
+    skyGlowWidth: 10.0,
+    skyGlowFalloff: 1.75,
+    skyGlowOpacity: 0.48,
+    skyGlow: 3.6,
+    skyRestrike: 16, // shape re-rolls / second while held
+    skyFlicker: 0.4,
+    skyFlickerSpeed: 30,
+    skyStrandFlash: 0.5,
+    skyTipGlow: 3.2,
+    skyTipLength: 0.06,
+    colorSkyCore: '#ffffff',
+    colorSkyInner: '#fff4c8',
+    colorSkyOuter: '#9ec8ff',
+    colorSkyHalo: '#3a58d8',
+    skyArcRadius: 5.2, // electric burn plate under the strike
+    skyArcLife: 1.4,
+    skyArcIntensity: 1.35,
+    skyArcBranches: 0.85,
+    colorSkyArc: '#c8e4ff',
+    colorSkyEmber: '#ffe6a0',
+    skySparkRate: 320, // sparks shed along the standing bolt
+    skyBurstSparks: 160, // one-shot radial burst when it lands
+    colorSkyBurstA: '#ffffff',
+    colorSkyBurstB: '#c9e0ff',
+    colorSkyBurstC: '#ffe8a0',
+
+    /* --- impact pillar (god-rays under / around the skybolt) --- */
+    pillarHeight: 10.0, // metres the soft rays climb
+    pillarRays: 10, // vertical beams (capped at 16)
+    pillarSpread: 1.4, // fan under the big bolt
+    pillarSway: 0.2,
     pillarSwaySpeed: 1.3,
     pillarBranchDim: 0.65,
-    pillarWidth: 0.07,
-    pillarWidthTop: 1.7,
+    pillarWidth: 0.09,
+    pillarWidthTop: 1.9,
     pillarWidthCurve: 0.85,
     pillarCoreSharp: 2.7,
-    pillarGlowWidth: 5.2,
+    pillarGlowWidth: 6.0,
     pillarGlowFalloff: 1.7,
     pillarGlowOpacity: 0.34,
-    pillarGlow: 2.3,
-    pillarSnap: 0.28, // seconds the pillar takes to rise open
+    pillarGlow: 2.5,
+    pillarSnap: 0.35, // seconds the pillar takes to rise open
 
     /* --- sparks, motes, glitter, haze --- */
     sparkRate: 140,
@@ -1827,11 +1883,11 @@ export const settings = {
     colorMoteB: '#ffe9a8',
     colorMoteC: '#ffb84a',
     colorMoteD: '#6a3a10',
-    glitterRate: 90, // only while the pillar stands
-    glitterSize: 0.04,
-    glitterSpeed: 2.2,
-    glitterLifetime: 1.1,
-    glitterRise: 2.4,
+    glitterRate: 140, // while pillar / skybolt stand
+    glitterSize: 0.05,
+    glitterSpeed: 2.6,
+    glitterLifetime: 1.25,
+    glitterRise: 2.8,
     colorGlitterA: '#ffffff',
     colorGlitterB: '#fff6d0',
     colorGlitterC: '#ffd27a',
@@ -1855,25 +1911,25 @@ export const settings = {
     colorMuzzleA: '#fff8e0',
     colorMuzzleB: '#ffd27a',
     colorMuzzleC: '#ff9a2e',
-    burstSize: 3.2,
-    burstIntensity: 1.15,
-    burstSparks: 70,
-    burstMotes: 55,
-    burstGlitter: 110,
-    impactShake: 0.55,
-    shakeDuration: 0.55,
-    holdShake: 0.03,
-    impactFlash: 0.22,
+    burstSize: 5.5,
+    burstIntensity: 1.45,
+    burstSparks: 120,
+    burstMotes: 90,
+    burstGlitter: 180,
+    impactShake: 1.15, // glacier-class punch
+    shakeDuration: 0.95,
+    holdShake: 0.08,
+    impactFlash: 0.42,
     rumble: 0.03,
     colorBurstA: '#fff0c0',
     colorBurstB: '#ffd070',
     colorBurstC: '#ffffff',
-    colorFlash: '#fff6d8',
+    colorFlash: '#eef4ff',
 
     /* --- dynamic light --- */
-    lightIntensity: 15,
-    lightRadius: 13,
-    lightColor: '#ffd27a'
+    lightIntensity: 28,
+    lightRadius: 20,
+    lightColor: '#d0e4ff'
   },
 
   /* ------------------------------------------------------------------ */
